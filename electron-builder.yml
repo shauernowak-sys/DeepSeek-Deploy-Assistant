@@ -1,0 +1,42 @@
+appId: com.dda.harness-deploy-assistant
+productName: DeepSeek Deploy Assistant
+copyright: Copyright © 2026
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+extraResources:
+  - from: apps/desktop/resources
+    to: .
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: deepseek-deploy-assistant-${version}-${arch}.${ext}
+  # Never ask for elevation: per-user install, matches ADR-006.
+  requestedExecutionLevel: asInvoker
+  # M1 prototype is unsigned and has no code-signing certificate; disabling edit/sign avoids
+  # electron-builder downloading winCodeSign (which requires symlink privileges we do not have).
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DeepSeek Deploy Assistant
+  uninstallDisplayName: DeepSeek Deploy Assistant
+  deleteAppDataOnUninstall: false
+
+publish: null

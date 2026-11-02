@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "C1-rc8",
+      "dsh": "0.1.0-rc.8",
+      "qqbot": "0.5.5",
+      "node": ">= 20.3.0",
+      "status": "blocked",
+      "evidence": [
+        "docs/M0-技术验证报告.md#4",
+        "C:\\dda-m0-lab\\logs\\11-fresh-web-err.log"
+      ],
+      "note": "M0-T3: dsh web 启动即崩溃（requires the Cordis HMR service），3/3 复现，禁止使用"
+    },
+    {
+      "id": "C1-prime",
+      "dsh": "0.2.0-rc.2",
+      "qqbot": "0.5.5",
+      "node": ">= 20.3.0",
+      "status": "verified-local",
+      "evidence": [
+        "docs/M0-技术验证报告.md#5",
+        "C:\\dda-m0-lab\\logs\\17-020rc2-web-with-qqbot-out.log"
+      ],
+      "note": "M0-T4: Web 启动成功、插件加载、进入扫码绑定；真实收发未验证（QQ-GATE-01）"
+    },
+    {
+      "id": "C3-latest",
+      "dsh": "0.2.1-rc.5",
+      "qqbot": "0.5.5",
+      "node": ">= 20.3.0",
+      "status": "unverified",
+      "evidence": ["npm registry: 不在 dsh.compatibility.dshReleases 列表"],
+      "note": "npm dist-tag latest 指向预发布，且未被插件声明兼容"
+    }
+  ]
+}

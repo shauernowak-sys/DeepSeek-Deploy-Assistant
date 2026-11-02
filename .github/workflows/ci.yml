@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Deterministic toolchain (M1 baseline).
+  NODE_VERSION: '22.23.4'
+  PNPM_VERSION: '11.28.5'
+  # Unsigned build on CI: winCodeSign cannot create symlinks on the runner, same as dev.
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  quality:
+    name: Quality gate (typecheck / unit / license)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        run: pnpm run typecheck
+
+      - name: Unit tests
+        run: pnpm run test
+
+      # PRD §12/§14: UNLICENSED or unreviewed dependencies must not enter a release build.
+      - name: License gate
+        run: pnpm run license:check
+
+  package:
+    name: Build installer (unsigned)
+    needs: quality
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build NSIS installer
+        run: pnpm run dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepseek-deploy-assistant-nsis
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 14
