@@ -1,5 +1,7 @@
 # DeepSeek Deploy Assistant
 
+[![CI](https://github.com/shauernowak-sys/DeepSeek-Deploy-Assistant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shauernowak-sys/DeepSeek-Deploy-Assistant/actions/workflows/ci.yml)
+
 面向**没有编程基础的 Windows 用户**的 DeepSeek Harness 部署助手：把 Node.js 私有运行时、pnpm、Harness（dsh）、web profile 与官方 QQ 插件的一次性配置，收敛成"打开软件 → 点开始 → 完成"。
 
 > 本仓库是**我们自己的部署助手**，不含也不重新开发 DeepSeek Harness 本体；Harness 由用户确认后从官方渠道自动获取安装。
@@ -14,7 +16,7 @@
 | 平台 | Windows 10/11 x64，per-user 安装，**无需管理员权限** |
 | 技术栈 | Electron 33 + React 18 + TypeScript（strict）+ 纯 CSS；NSIS 安装器 |
 | 技术基线 | Node.js 22.23.4 · pnpm 11.28.5 · `@deepseek-ai/dsh@0.2.0-rc.2`（web profile）· `@tencent-connect/dsh-qqbot@0.5.5` |
-| 自动化测试 | 60 通过 / 2 门控跳过（真实集成测试按 `DDA_E2E=1` 启用） |
+| 自动化测试 | 60 通过 / 2 门控跳过（真实集成测试按 `DDA_E2E=1` 启用）；GitHub Actions CI 全绿 |
 | QQ-GATE-01 | **未通过**（真实扫码、消息收发、图片、断线重连、重启恢复尚未验证） |
 | Windows 11 第二环境验证 | **未执行**（无干净 Win11 机器/虚拟机） |
 | 代码签名 | S0（未签名，SmartScreen 会提示未知发布者） |

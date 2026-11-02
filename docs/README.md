@@ -110,7 +110,8 @@
 | 最终决策清单 | **本批新增**（[04-最终决策清单](./04-最终决策清单.md)） |
 | M0 技术验证 | **已执行**（[M0 技术验证报告](./M0-技术验证报告.md)）：C1 组合实测失败，改用 C1′ |
 | M1 开发 | **已交付**（[M1 验收报告](./M1-验收报告.md)）：安装器 + 部署链路可运行；QQ-GATE-01 未通过 |
-| M2 开发 | **已交付 0.2.0**（[M2 验收报告](./M2-验收报告.md)）：任务控制、诊断导出、UX 完善、稳定性修复、CI 门禁；QQ-GATE-01 仍未通过 |
+| M2 开发 | **已交付 0.2.0**（[M2 验收报告](./M2-验收报告.md)）：任务控制、诊断导出、UX 完善、稳定性修复、CI 门禁（GitHub Actions run #2 全绿）；QQ-GATE-01 仍未通过 |
+| 代码托管 | **已推送 GitHub**：`shauernowak-sys/DeepSeek-Deploy-Assistant`（private，`main`） |
 | 代码 / 脚手架 | **已建立**（M1 + M2 范围）；下一步 M3（API 真实连接、QQ 实机验证、第二环境、资源库） |
 | 第二环境（Win11）验证 | **未执行**（无 Win11 机器/虚拟机），"支持 Win11"仍为待验证 |
 
@@ -120,6 +121,17 @@
 
 ## 1. 变更记录
 
+### V0.8（2026-11-02，上传 GitHub 并实跑 CI）
+
+| 项 | 结果 |
+|---|---|
+| 仓库 | 首次推送至 `github.com/shauernowak-sys/DeepSeek-Deploy-Assistant`（private，`main`），89 个文件；`node_modules/`、`out/`、`release/`（79 MB 安装包）按 `.gitignore` 不上传 |
+| 新增 | 仓库根 [README.md](../README.md)（项目门面：状态、能力、目录、快速开始、文档导航、设计边界） |
+| 修复 | **CI run #1 失败**：pnpm 11 已弃用 `onlyBuiltDependencies`，`pnpm install --frozen-lockfile` 在 `CI=true` 下报 `ERR_PNPM_IGNORED_BUILDS`；改用 `allowBuilds`（`pnpm approve-builds` 标准形式）后 **run #2 全绿** |
+| 证据 | [evidence/m2-ci-run2-quality.log](./evidence/m2-ci-run2-quality.log)：typecheck + 60 单测 + 许可证 + NSIS 打包 + 产物上传全部 success |
+| 文档同步 | M2 三份报告与已知问题中"CI 未实跑"的表述已按实跑结果更新（K-M2-03 标记为已解除） |
+| 未改 | 产品代码逻辑、PRD、01/02/03/04、M0/M1 文档 |
+
 ### V0.7（2026-11-02，M2 开发与验收）
 
 | 项 | 结果 |
@@ -127,7 +139,7 @@
 | 新增 | [M2-实施报告](./M2-实施报告.md)、[M2-测试报告](./M2-测试报告.md)、[M2-已知问题](./M2-已知问题.md)、[M2-验收报告](./M2-验收报告.md)；`docs/evidence/m2-*.log` 共 10 份实机日志 |
 | 产品 | 0.2.0：任务控制（暂停/继续/取消/取消确认/路径级清理）、诊断 ZIP 导出（7 段、构建期脱敏、预览可取消）、UX 完善（阶段/失败分类/真实 Harness 版本/插件状态/修复重跑）、Journal `EPERM` 竞态修复、清理空父目录、CI 工作流与许可证门禁 |
 | 测试 | 60 通过 / 2 门控跳过（M1 为 46，无删除降级）；真实集成 2 项通过（完整部署 47.2 s、幂等重跑 3.7 s + 健康 `usable`）；10 个实机场景通过 |
-| 未通过 | QQ-GATE-01（无真实凭据）、Windows 11 第二环境（无机器）、GitHub Actions 实跑（无远端）、Desktop 四态实机、API 真实连接（未实现） |
+| 未通过 | QQ-GATE-01（无真实凭据）、Windows 11 第二环境（无机器）、Desktop 四态实机、API 真实连接（未实现）；CI 曾未实跑，V0.8 已实跑通过 |
 | 未改 | 01/02/03/04、PRD 与 M0/M1 文档；冻结定位与技术基线未变 |
 
 ### V0.6（2026-11-02，PRD R2 修订）
