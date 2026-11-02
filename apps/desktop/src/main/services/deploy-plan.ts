@@ -21,6 +21,7 @@ import {
   runCommandCapture,
   writePnpmShim,
   type AppPaths,
+  type DshCli,
 } from '@dda/adapters';
 import { BASELINE, DdaError, ERROR_CODES } from '@dda/spec';
 import type { CompatMatrix, RuntimeManifest } from '@dda/spec';
@@ -33,6 +34,8 @@ export interface DeployPlanDeps {
   matrix: CompatMatrix;
   registry: string;
   log: (message: string) => void;
+  /** Injectable so a unit test can exercise the plan's recording rules without a real Harness. */
+  cli?: DshCli;
 }
 
 /**
@@ -41,7 +44,7 @@ export interface DeployPlanDeps {
  */
 export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
   const { paths, manifest, matrix, registry, log } = deps;
-  const cli = createDshCli({ paths, pnpmBinDir: join(paths.root, 'bin'), registry });
+  const cli = deps.cli ?? createDshCli({ paths, pnpmBinDir: join(paths.root, 'bin'), registry });
   const getCli = () => cli;
 
   return [
@@ -223,7 +226,9 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
       title: `准备 ${BASELINE.dsh.profile} profile`,
       weight: 3,
       async run(ctx: StepContext) {
-        ctx.created(join(paths.dshHome, 'profiles'));
+        // `dsh-home` belongs to the user: even when this step creates it, it is NOT an installation
+        // artifact. Recording it in `created[]` would make "cancel + cleanup" delete the Harness
+        // profile (config, plugins, credentials) that the product must never touch.
         await getCli().ensureProfile(BASELINE.dsh.profile);
         ctx.log(`profile 目录: ${join(paths.dshHome, 'profiles', BASELINE.dsh.profile)}`);
       },

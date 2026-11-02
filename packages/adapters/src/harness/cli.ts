@@ -31,7 +31,7 @@ export interface DshCli {
   listPlugins(profile: string): Promise<PluginState[]>;
   addPlugin(profile: string, spec: string): Promise<void>;
   removePlugin(profile: string, name: string): Promise<void>;
-  launchWeb(profile: string, port: number): Promise<{ handle: ChildHandle; ready: Promise<{ url: string; token: string }> }>;
+  launchWeb(profile: string, port: number, timeoutMs?: number): Promise<{ handle: ChildHandle; ready: Promise<{ url: string; token: string }> }>;
 }
 
 export function createDshCli(options: DshEnvOptions): DshCli {
@@ -76,12 +76,16 @@ export function createDshCli(options: DshEnvOptions): DshCli {
       await run(['plugin', '--profile', profile, 'remove', name], 10 * 60_000);
     },
 
-    async launchWeb(profile, port) {
+    async launchWeb(profile, port, timeoutMs = WEB_START_TIMEOUT_MS) {
       const args = [bin, '--profile', profile, '--no-open', '--port', String(port)];
       const handle = spawnCommand({ exePath: exe, args, env: dshEnv(options) });
       const ready = new Promise<{ url: string; token: string }>((resolve, reject) => {
         let buffer = '';
-        const timer = setTimeout(() => reject(new Error('等待 dsh web 启动超时（30s）')), 30_000);
+        const timer = setTimeout(() => {
+          // A silent timeout is undiagnosable: keep the tail of what the child actually said.
+          const tail = buffer.trim().slice(-400) || '（无输出）';
+          reject(new Error(`等待 dsh web 启动超时（${Math.round(timeoutMs / 1000)}s）：${tail}`));
+        }, timeoutMs);
         handle.child.stdout.setEncoding('utf8');
         handle.child.stdout.on('data', (chunk: string) => {
           buffer += chunk;
@@ -126,3 +130,11 @@ export function parsePluginList(stdout: string): PluginState[] {
 }
 
 export const QQ_PLUGIN_SPEC = `${'@tencent-connect/dsh-qqbot'}@${BASELINE.qqbot.version}`;
+
+/**
+ * `dsh web` on a freshly deployed root has been observed to stay silent for well over 30 s on a
+ * first start (first-run initialisation + Defender scanning of a freshly written tree). Failing
+ * the launch at 30 s produced a false negative for the user, so the ceiling is generous and the
+ * captured output is included in the error.
+ */
+export const WEB_START_TIMEOUT_MS = 120_000;

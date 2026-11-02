@@ -12,16 +12,19 @@
 
 | 项目 | 状态 |
 |---|---|
-| 产品版本 | **0.2.0**（M2 已交付） |
+| 产品版本 | **0.2.0**（M2 已交付，M2.1 独立复核后重建） |
 | 平台 | Windows 10/11 x64，per-user 安装，**无需管理员权限** |
 | 技术栈 | Electron 33 + React 18 + TypeScript（strict）+ 纯 CSS；NSIS 安装器 |
 | 技术基线 | Node.js 22.23.4 · pnpm 11.28.5 · `@deepseek-ai/dsh@0.2.0-rc.2`（web profile）· `@tencent-connect/dsh-qqbot@0.5.5` |
-| 自动化测试 | 60 通过 / 2 门控跳过（真实集成测试按 `DDA_E2E=1` 启用）；GitHub Actions CI 全绿 |
+| 自动化测试 | **88 通过 / 2 门控跳过**（真实集成测试按 `DDA_E2E=1` 启用；集成 2 项已单独实跑通过） |
+| 版本信息 | `package.json` / `app.getVersion()` / exe FileVersion / ProductVersion / 安装包文件名 **均为 0.2.0** |
+| 最终安装包 | `release/deepseek-deploy-assistant-0.2.0-x64.exe`（82,723,406 B，SHA-256 `08070338367AD04856A739E7D45023E52598C199D35D2928A5DC829C1B2306F6`） |
+| 本轮实机环境 | Windows 11 Pro 10.0.26200，非管理员，**非干净机**（存在系统 Node） |
 | QQ-GATE-01 | **未通过**（真实扫码、消息收发、图片、断线重连、重启恢复尚未验证） |
-| Windows 11 第二环境验证 | **未执行**（无干净 Win11 机器/虚拟机） |
+| 干净 Win11 第二环境验证 | **未通过**（本机不是干净机；验收方案见 [M2.1 独立审计报告](./docs/M2.1-独立审计报告.md) §6.4） |
 | 代码签名 | S0（未签名，SmartScreen 会提示未知发布者） |
 
-> 未验证的能力一律标注"未验证/未通过"，不因为代码写了就当作已完成。
+> 未验证的能力一律标注"未验证/未通过"，不因为代码写了就当作已完成。**M2 的原始交付包（82,722,409 B）已被 M2.1 修复包取代，不应继续分发。**
 
 ---
 
@@ -36,6 +39,20 @@
 - **诊断报告**：一键导出 ZIP（系统/运行时/profile/插件/任务/网络/日志 7 段），构建期脱敏，不含 API Key、Token、AppSecret。
 - **三级健康检测**：`down` / `alive` / `authorized` / `usable`（HTTP 401 只算"存活"，不算可用）。
 - **质量门禁**：`typecheck` + `vitest` + 生产依赖许可证检查 + 安装包构建。
+
+## M2.1 修复摘要（独立审计后）
+
+| 缺陷 | 修复 |
+|---|---|
+| 「取消 + 清理」会把 `dsh-home/profiles` 当成本任务产物，可能递归删除用户 Harness profile（**P0**） | 移除该记录，新增"清理边界"回归测试 |
+| 空 `USERPROFILE` 时 `sanitize()` 摧毁整份诊断报告、且路径失去脱敏（**P0**） | 空/过短 homeDir 直接跳过路径替换；支持正/反斜杠、结尾斜杠、JSON 二次转义 |
+| QQ 号（5–8 位）、`DEEPSEEK_API_KEY=`、`api_key:`、`token=`、`password=`、`Authorization:` 不脱敏（**P0/P1**） | 改为"字段名驱动 + 已知值形状"的脱敏规则，日志与诊断双通道 |
+| 诊断预览与最终 ZIP 不是同一份内容 | 导出复用预览快照 |
+| 全新部署后首次启动 Harness 在 30 s 上报失败（实测约 39 s） | 超时 120 s，错误信息带子进程尾部输出 |
+| exe `FileVersion` 显示 `33.4.11` | 两段式构建 + `resedit` 写版本资源 → `0.2.0` |
+| 卸载残留空程序目录 | NSIS `customUnInstall` 回收（只删空目录） |
+
+详见 [M2.1 修复记录](./docs/M2.1-修复记录.md)。
 
 ---
 
@@ -69,6 +86,9 @@ pnpm dist         # 构建 NSIS 安装包（输出到 release/，已被 .gitigno
 $env:DDA_E2E = "1"; pnpm test
 ```
 
+> **构建说明（M2.1 起）**：`pnpm dist` 是**两段式**构建 —— `electron-builder --dir` → `scripts/set-win-version.mjs`（用 `resedit` 写 `FileVersion`/`ProductVersion`）→ `electron-builder --prepackaged` 出 NSIS。
+> 原因：electron-builder 的 `signAndEditExecutable` 在非管理员机器上会去解压 `winCodeSign`（内含符号链接，需要管理员权限），把"写版本资源"和"签名工具链"绑死了。拆开后，**非管理员也能产出 FileVersion = 0.2.0 的安装包**。
+
 ---
 
 ## 文档导航
@@ -84,7 +104,8 @@ $env:DDA_E2E = "1"; pnpm test
 | [04 最终决策清单](./docs/04-最终决策清单.md) | 已确定 / 源码验证 / 待实机验证 / 阻塞开发 |
 | [M0 技术验证报告](./docs/M0-技术验证报告.md) | 真实环境验证结论（含失败组合与替代基线） |
 | [M1 验收报告](./docs/M1-验收报告.md) | 首个可运行安装器与部署链路 |
-| [M2 验收报告](./docs/M2-验收报告.md) · [实施](./docs/M2-实施报告.md) · [测试](./docs/M2-测试报告.md) · [已知问题](./docs/M2-已知问题.md) | 任务控制、诊断导出、稳定性修复与真实证据 |
+| [M2 验收报告](./docs/M2-验收报告.md) · [实施](./docs/M2-实施报告.md) · [测试](./docs/M2-测试报告.md) · [已知问题](./docs/M2-已知问题.md) | 任务控制、诊断导出、稳定性修复与真实证据（结论已被 M2.1 修订） |
+| [M2.1 独立审计](./docs/M2.1-独立审计报告.md) · [修复记录](./docs/M2.1-修复记录.md) · [验收报告](./docs/M2.1-验收报告.md) | 对 M2 的独立复核：8 个真实缺陷（含 1 个会删除用户 profile 的 P0）、版本信息校正、重建安装包与 SHA-256 |
 
 ---
 

@@ -1,0 +1,26 @@
+﻿pnpm.cmd : [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cj
+s-node-api-deprecated for more details.[39m
+所在位置 行:2 字符: 488
++ ... r.FullName; & pnpm.cmd exec vitest run tests/integration/reuse-and-he ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33mThe CJS bu...e details.[39m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/DeepSeek-Deploy-Assistant/DeepSeek-Deploy-Assistant[39m
+
+[90mstdout[2m | tests/integration/reuse-and-health.test.ts[2m > [22m[2mE2E 幂等性与启动健康（DDA_E2E=1 + DDA_E2E_ROOT）[2m > [22m[2m重复执行 plan 全部跳过，且能启动 web 并达到 usable
+[22m[39m幂等重跑用时 3.5s
+check-disk:succeeded download-node:skipped extract-node:skipped verify-node:succeeded ensure-pnpm:succeeded write-shim:succeeded install-dsh:skipped verify-dsh:succeeded assert-combo:succeeded ensure-profile:succeeded install-qqbot:skipped verify-plugin:succeeded route-report:succeeded
+
+[90mstdout[2m | tests/integration/reuse-and-health.test.ts[2m > [22m[2mE2E 幂等性与启动健康（DDA_E2E=1 + DDA_E2E_ROOT）[2m > [22m[2m重复执行 plan 全部跳过，且能启动 web 并达到 usable
+[22m[39mhealth=usable http=401 detail=鉴权通过，已返回应用外壳
+
+ [32m✓[39m tests/integration/reuse-and-health.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 42841[2mms[22m[39m
+   [33m[2m✓[22m[39m E2E 幂等性与启动健康（DDA_E2E=1 + DDA_E2E_ROOT）[2m > [22m重复执行 plan 全部跳过，且能启动 web 并达到 usable [33m42839[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 20:38:23
+[2m   Duration [22m 43.52s[2m (transform 134ms, setup 0ms, collect 237ms, tests 42.84s, environment 0ms, prepare 160ms)[22m
+

@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 import type { PluginState, TaskSummary } from '@dda/spec';
 
@@ -37,15 +37,43 @@ export interface DiagnosticSection {
   content: string;
 }
 
-/** Aggressive sanitisation: secrets, tokens, home path, QQ ids. Runs before anything is zipped. */
+const USER_PLACEHOLDER = '<user>';
+const REDACTED = '[redacted]';
+
+/**
+ * Aggressive sanitisation: secrets, tokens, app ids, QQ ids, home path. Runs before anything is
+ * zipped and again in the preview, so both surfaces show identical bytes.
+ *
+ * An empty/short `homeDir` must be tolerated: `replaceAll('')` would interleave the placeholder
+ * between every character and destroy the whole report, so path redaction is skipped instead.
+ */
 export function sanitize(text: string, homeDir: string): string {
   let out = redact(text);
-  out = out.replaceAll(homeDir, '<user>');
-  out = out.replaceAll(homeDir.replace(/\\/g, '/'), '<user>');
-  const user = homeDir.split(/[\\/]/).pop() ?? '';
-  if (user.length > 2) out = out.replaceAll(user, '<user>');
-  out = out.replace(/\b(appId|appid|AppID)\b\s*[:=]\s*["']?\d{5,}["']?/g, '$1=<redacted>');
-  out = out.replace(/([?&](?:token|access_token|key|secret)=)[^&\s"']+/gi, '$1<redacted>');
+
+  const home = homeDir.trim().replace(/[\\/]+$/, '');
+  if (home.length >= 3) {
+    const user = home.split(/[\\/]/).pop() ?? '';
+    const variants = new Set([
+      home,
+      home.replace(/\\/g, '/'),
+      home.replace(/\//g, '\\'),
+      // JSON sections serialise a Windows path with doubled backslashes.
+      home.replace(/\\/g, '\\\\'),
+    ]);
+    for (const variant of variants) {
+      if (variant.length >= 3) out = out.split(variant).join(USER_PLACEHOLDER);
+    }
+    if (user.length >= 3) out = out.split(user).join(USER_PLACEHOLDER);
+  }
+
+  // QQ bot appId (6-10 digits) — the value identifies the tenant, so only the name survives.
+  out = out.replace(/\b(app[_-]?id)\b\s*[:=]\s*["']?\d{4,}["']?/gi, `$1=${REDACTED}`);
+  // QQ account / group / channel identifiers, including the 5-8 digit ranges the old
+  // "9+ digits" rule used to miss.
+  out = out.replace(
+    /\b(qq|uin|openid|unionid|group[_-]?id|group[_-]?code|guild[_-]?id|channel[_-]?id|user[_-]?id|member[_-]?openid)\b\s*[:：=]?\s*["']?([0-9A-Za-z_-]{4,})/gi,
+    `$1=${REDACTED}`,
+  );
   out = out.replace(/\b\d{9,}\b/g, '<digits>');
   return out;
 }
@@ -151,11 +179,13 @@ export async function buildDiagnosticSections(input: DiagnosticInputs): Promise<
   });
 
   const logParts: string[] = [];
+  const homeForHeader = input.homeDir.trim();
   for (const file of input.logFiles.slice(0, 3)) {
     try {
-      logParts.push(`===== ${relative(input.homeDir, file)} =====\n${await tail(file)}`);
+      const label = homeForHeader ? relative(homeForHeader, file) : basename(file);
+      logParts.push(`===== ${label} =====\n${await tail(file)}`);
     } catch {
-      logParts.push(`===== ${file} (读取失败) =====`);
+      logParts.push(`===== ${basename(file)} (读取失败) =====`);
     }
   }
   sections.push({

@@ -24,8 +24,10 @@ win:
   artifactName: deepseek-deploy-assistant-${version}-${arch}.${ext}
   # Never ask for elevation: per-user install, matches ADR-006.
   requestedExecutionLevel: asInvoker
-  # M1 prototype is unsigned and has no code-signing certificate; disabling edit/sign avoids
-  # electron-builder downloading winCodeSign (which requires symlink privileges we do not have).
+  # M2.1: electron-builder's own resource editing (+ signing) is skipped because on a non-admin
+  # machine it downloads the winCodeSign toolchain, which cannot extract its symlinks. Version
+  # resources are therefore written by scripts/set-win-version.mjs (resedit) between the `--dir`
+  # and the NSIS pass — see package.json "dist".
   signAndEditExecutable: false
 
 nsis:
@@ -38,5 +40,7 @@ nsis:
   shortcutName: DeepSeek Deploy Assistant
   uninstallDisplayName: DeepSeek Deploy Assistant
   deleteAppDataOnUninstall: false
+  # Removes the empty install directory the uninstaller leaves behind (K-M2-11).
+  include: build/installer.nsh
 
 publish: null

@@ -1,0 +1,29 @@
+# M2.1 安装/卸载实测（2026-11-02T20:48:22）
+OS: Microsoft Windows 11 Pro build 26200 / 当前进程管理员: False
+installer: D:\DeepSeek-Deploy-Assistant\DeepSeek-Deploy-Assistant\release\deepseek-deploy-assistant-0.2.0-x64.exe
+bytes: 82723406  sha256: 08070338367AD04856A739E7D45023E52598C199D35D2928A5DC829C1B2306F6
+sentinel created: True
+
+## 1) 静默安装（/S，per-user，无 UAC）
+exit=0 elapsed=5.1s
+registry entries=1 DisplayVersion=0.2.0 UninstallString="C:\Users\<user>\AppData\Local\Programs\DeepSeek Deploy Assistant\Uninstall DeepSeek Deploy Assistant.exe" /currentuser
+installDir=True files=76
+app exe FileVersion=0.2.0 ProductVersion=0.2.0.0
+
+## 2) 静默卸载（/currentuser /S）
+exit=0 elapsed=2.4s
+registry entries=0
+installDir exists=False
+user data dir=True sentinel=True
+
+## 3) 正常（交互）安装：默认按钮推进
+wizard window='DeepSeek Deploy Assistant 安装 '
+installer exit=0 installDir=True registry=1
+shortcuts desktop=True startMenu=True
+
+## 4) 正常（交互）卸载：确认框默认按钮
+uninstaller window='DeepSeek Deploy Assistant 解除安装'
+uninstaller window='DeepSeek Deploy Assistant 解除安装 '
+registry entries=0 installDir exists=False
+shortcuts desktop=False startMenu=False
+user data dir=True sentinel=True

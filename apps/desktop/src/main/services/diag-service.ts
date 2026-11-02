@@ -1,7 +1,7 @@
 import { mkdir, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { buildDiagnosticSections, previewLines, writeZip, type DiagnosticSection } from '@dda/core';
+import { buildDiagnosticSections, previewLines, writeZip, type DiagnosticSection, type NetworkSummary } from '@dda/core';
 import { app } from 'electron';
 import { BASELINE, type PluginState, type TaskSummary } from '@dda/spec';
 
@@ -21,11 +21,16 @@ export interface DiagPreview {
  * collected (already sanitized), then either cancels or confirms the export.
  */
 export class DiagnosticsService {
+  /** Snapshot returned by the last preview: an export must ship exactly what the user saw. */
+  private previewed?: DiagnosticSection[];
+
   constructor(
     private readonly container: Container,
     private readonly env: EnvService,
     private readonly harness: HarnessService,
     private readonly getTask: () => Promise<TaskSummary | undefined>,
+    /** Injectable for tests: the real probe hits the network and would make the ZIP non-deterministic. */
+    private readonly networkProbe?: () => Promise<NetworkSummary>,
   ) {}
 
   private async sections(): Promise<DiagnosticSection[]> {
@@ -58,7 +63,7 @@ export class DiagnosticsService {
       },
       plugins,
       task: await this.getTask(),
-      network: await this.networkSummary(),
+      network: await this.network(),
       logFiles: logs,
       homeDir: process.env.USERPROFILE ?? '',
       dataDir: paths.root,
@@ -67,6 +72,7 @@ export class DiagnosticsService {
 
   async preview(): Promise<DiagPreview> {
     const sections = await this.sections();
+    this.previewed = sections;
     const totalBytes = sections.reduce((sum, s) => sum + Buffer.byteLength(s.content, 'utf8'), 0);
     return {
       entries: previewLines(sections),
@@ -76,8 +82,15 @@ export class DiagnosticsService {
     };
   }
 
+  private network(): Promise<NetworkSummary> {
+    return this.networkProbe ? this.networkProbe() : this.networkSummary();
+  }
+
   async export(): Promise<{ zipPath: string; bytes: number; entries: number }> {
-    const sections = await this.sections();
+    // Ship the snapshot the user confirmed. Re-collecting here would produce different log tails
+    // and network results, so the ZIP could contain content the preview never showed.
+    const sections = this.previewed ?? (await this.sections());
+    this.previewed = undefined;
     const dir = join(this.container.paths.root, 'diagnostics');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const zipPath = join(dir, `dda-diagnostics-${stamp}.zip`);
