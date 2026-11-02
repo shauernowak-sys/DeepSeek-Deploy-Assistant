@@ -1,6 +1,7 @@
 packages:
   - '.'
 
-onlyBuiltDependencies:
-  - electron
-  - esbuild
+# pnpm 11: build-script allowlist lives in pnpm-workspace.yaml (pnpm approve-builds writes this).
+allowBuilds:
+  electron: true
+  esbuild: true
