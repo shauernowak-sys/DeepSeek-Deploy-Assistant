@@ -1,0 +1,12 @@
+﻿=== DDA M2 installer acceptance 2026-11-02T17:10:56.6824692+08:00 ===
+installer: release\deepseek-deploy-assistant-0.2.0-x64.exe
+sha256: 1DE1CCCCEDFD59E0D0538F0352484EC08DF2A6B51B151DD4A46D0F08E82121DF
+size_bytes: 82722409
+silent_install exit=0 elapsed_s=4.1
+registry: DisplayName=DeepSeek Deploy Assistant DisplayVersion=0.2.0 entries=1
+install_dir_exists: True
+silent_uninstall exit=0 elapsed_s=1.2
+after_uninstall registry_entries=0
+after_uninstall leftover_files=0
+after_uninstall data_dir_exists=True
+after_uninstall sentinel_exists=True

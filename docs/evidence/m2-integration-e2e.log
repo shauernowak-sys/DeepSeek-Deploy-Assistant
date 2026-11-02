@@ -1,0 +1,138 @@
+﻿=== DDA M2 real integration (DDA_E2E=1) 2026-11-02T17:11:20.4544078+08:00 ===
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mC:/Users/LIU/Documents/DeepSeek-Deploy-Assistant[39m
+
+ [2m[90m↓[39m[22m tests/integration/reuse-and-health.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[check-disk] 可用空间 381.5 GB
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m安装目录: C:\Users\LIU\AppData\Local\Temp\dda-e2e-UkbQi1\DeepSeekDeployAssistant；管理员: false
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m下载完成: https://cdn.npmmirror.com/binaries/node/v22.23.4/node-v22.23.4-win-x64.zip (34.0 MB, 续传起点 0)
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[extract-node] 解压 Node 22.23.4 到 C:\Users\LIU\AppData\Local\Temp\dda-e2e-UkbQi1\DeepSeekDeployAssistant\runtimes\node\22.23.4
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[extract-node] 解压完成: 2032 个文件, 94.5 MB
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[verify-node] node -v => 22.23.4
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[ensure-pnpm] 安装 pnpm@11.28.5 到私有前缀
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[ensure-pnpm] pnpm => 11.28.5
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[write-shim] shim: C:\Users\LIU\AppData\Local\Temp\dda-e2e-UkbQi1\DeepSeekDeployAssistant\bin\pnpm.cmd（仅注入子进程 PATH）
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 1, reused 0, downloaded 0, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 90, reused 0, downloaded 22, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 220, reused 0, downloaded 138, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 280, reused 0, downloaded 238, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 375, reused 0, downloaded 302, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 422, reused 0, downloaded 332, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 495, reused 0, downloaded 360, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 561, reused 0, downloaded 409, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 561, reused 0, downloaded 423, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 575, reused 0, downloaded 444, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 500, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 523, added 0
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 524, added 50
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 530, added 92
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 531, added 142
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 532, added 244
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 532, added 459
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 532, added 528
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-dsh] Progress: resolved 603, reused 0, downloaded 533, added 530, done
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39mpnpm add 退出码=1
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[verify-dsh] dsh --version => 0.2.0-rc.2
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[assert-combo] 组合 C1-prime 状态 verified-local
+[assert-combo] 证据: docs/M0-技术验证报告.md#5, C:\dda-m0-lab\logs\17-020rc2-web-with-qqbot-out.log
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[ensure-profile] profile 目录: C:\Users\LIU\AppData\Local\Temp\dda-e2e-UkbQi1\DeepSeekDeployAssistant\dsh-home\profiles\web
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[install-qqbot] 注意: 该插件的运行时依赖 @tencent-connect/qqbot-connector 为 UNLICENSED，仅在线安装，不打包、不镜像。
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[verify-plugin] 已安装: @tencent-connect/dsh-qqbot@0.5.5
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39m[route-report] route=cli
+[route-report] cli.managedVersion=0.2.0-rc.2 | cli.pathVersion=- | home.profiles=C:\Users\LIU\AppData\Local\Temp\dda-e2e-UkbQi1\DeepSeekDeployAssistant\dsh-home | home.desktopProfile=absent | desktop.registry=not-found | desktop.installDir=absent
+
+[90mstdout[2m | tests/integration/real-deploy.test.ts[2m > [22m[2mE2E 真实部署（DDA_E2E=1）[2m > [22m[2m按生产 plan 完整部署并验证 dsh / profile / 插件
+[22m[39mE2E 用时 45.9s，root=C:\Users\LIU\AppData\Local\Temp\dda-e2e-UkbQi1\DeepSeekDeployAssistant
+  succeeded  check-disk
+  succeeded  download-node
+  succeeded  extract-node
+  succeeded  verify-node
+  succeeded  ensure-pnpm
+  succeeded  write-shim
+  succeeded  install-dsh
+  succeeded  verify-dsh
+  succeeded  assert-combo
+  succeeded  ensure-profile
+  succeeded  install-qqbot
+  succeeded  verify-plugin
+  succeeded  route-report
+
+ [32m✓[39m tests/integration/real-deploy.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 47239[2mms[22m[39m
+   [33m[2m✓[22m[39m E2E 真实部署（DDA_E2E=1）[2m > [22m按生产 plan 完整部署并验证 dsh / profile / 插件 [33m47237[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (2)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (2)[39m
+[2m   Start at [22m 17:11:29
+[2m   Duration [22m 48.17s[2m (transform 198ms, setup 0ms, collect 935ms, tests 47.24s, environment 0ms, prepare 290ms)[22m
+
+exit=0

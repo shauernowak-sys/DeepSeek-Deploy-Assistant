@@ -3,6 +3,8 @@ out
 release
 dist
 *.log
+# 验收/测试证据日志需要入库（docs/evidence/），其余日志仍忽略
+!docs/evidence/*.log
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
