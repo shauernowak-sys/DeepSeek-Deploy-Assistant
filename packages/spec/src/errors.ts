@@ -9,6 +9,7 @@ export const ERROR_CODES = {
   E_PROCESS_FAILED: 'E_PROCESS_FAILED',
   E_VERSION_UNSUPPORTED: 'E_VERSION_UNSUPPORTED',
   E_PROFILE_OWNED_BY_DESKTOP: 'E_PROFILE_OWNED_BY_DESKTOP',
+  E_HARNESS_NOT_DEPLOYED: 'E_HARNESS_NOT_DEPLOYED',
   E_DISK_FULL: 'E_DISK_FULL',
   E_ROLLBACK_FAILED: 'E_ROLLBACK_FAILED',
 } as const;
@@ -43,6 +44,7 @@ export const DIAGNOSTICS: Record<ErrorCode, { cause: string; action: string }> =
   E_PROCESS_FAILED: { cause: '子进程以非 0 退出', action: '展开日志查看 stderr；复制诊断包反馈' },
   E_VERSION_UNSUPPORTED: { cause: '当前版本组合未经验证（如 latest 预发布）', action: '使用清单中锁定的版本组合' },
   E_PROFILE_OWNED_BY_DESKTOP: { cause: '目标是官方 Desktop 拥有的 profile', action: '请在该应用内操作；本工具不会修改它' },
+  E_HARNESS_NOT_DEPLOYED: { cause: '本机还没有装好 Harness 运行时（Node / dsh）', action: '先完成"一键部署"（需联网），成功后再启动 Harness' },
   E_DISK_FULL: { cause: '磁盘空间不足', action: '至少预留 2 GB 后重试' },
   E_ROLLBACK_FAILED: { cause: '回滚时部分文件被占用', action: '关闭 Harness 后重试，或手动删除本次创建目录' },
 };

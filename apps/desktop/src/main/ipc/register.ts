@@ -5,12 +5,15 @@ import {
   DiagExportSchema,
   EnvScanSchema,
   HarnessLaunchSchema,
-  SecretSetSchema,
+  ApiEmptySchema,
+  ApiSaveSchema,
+  ApiTestSchema,
   TaskCancelSchema,
   TaskIdSchema,
   TaskStartSchema,
   BASELINE,
 } from '@dda/spec';
+import { DEEPSEEK_MODELS, DEEPSEEK_TEMPLATE } from '@dda/core';
 import type { TaskEvent } from '@dda/spec';
 
 import type { Container } from '../services/container';
@@ -18,6 +21,7 @@ import { DeployService } from '../services/deploy-service';
 import { DiagnosticsService } from '../services/diag-service';
 import { EnvService } from '../services/env-service';
 import { HarnessService } from '../services/harness-service';
+import type { ApiService } from '../services/api-service';
 import { Secrets } from '../security/secrets';
 
 export const QQ_GATE_01 = {
@@ -36,6 +40,7 @@ export interface IpcContext {
   harness: HarnessService;
   diagnostics: DiagnosticsService;
   secrets: Secrets;
+  api: ApiService;
   broadcast: (event: TaskEvent) => void;
 }
 
@@ -47,6 +52,10 @@ export function registerIpc(ctx: IpcContext): void {
     dataDir: ctx.container.paths.root,
     registry: ctx.container.registry,
     lastTask: await ctx.deploy.summary(),
+    // Single source of truth for the "verified DeepSeek template" shown in the UI.
+    apiTemplate: DEEPSEEK_TEMPLATE,
+    apiModels: DEEPSEEK_MODELS,
+    apiStatus: await ctx.api.status(),
   }));
 
   ipcMain.handle('env:scan', async (_event, raw: unknown) => {
@@ -129,14 +138,22 @@ export function registerIpc(ctx: IpcContext): void {
     return ctx.harness.listPlugins();
   });
 
-  ipcMain.handle('secret:set', async (_event, raw: unknown) => {
-    const input = SecretSetSchema.parse(raw);
-    return ctx.secrets.set(input.key, input.value);
+  ipcMain.handle('api:status', async () => ctx.api.status());
+
+  ipcMain.handle('api:test', async (_event, raw: unknown) => {
+    const input = ApiTestSchema.parse(raw);
+    return ctx.api.test(input);
   });
 
-  ipcMain.handle('secret:status', async () => ({
-    deepseekApiKey: await ctx.secrets.masked('deepseek.apiKey'),
-  }));
+  ipcMain.handle('api:save', async (_event, raw: unknown) => {
+    const input = ApiSaveSchema.parse(raw);
+    return ctx.api.save(input);
+  });
+
+  ipcMain.handle('api:delete', async (_event, raw: unknown) => {
+    ApiEmptySchema.parse(raw ?? {});
+    return ctx.api.remove();
+  });
 
   ipcMain.handle('log:open', async () => {
     await shell.openPath(ctx.container.paths.logs);

@@ -16,9 +16,10 @@
 | 平台 | Windows 10/11 x64，per-user 安装，**无需管理员权限** |
 | 技术栈 | Electron 33 + React 18 + TypeScript（strict）+ 纯 CSS；NSIS 安装器 |
 | 技术基线 | Node.js 22.23.4 · pnpm 11.28.5 · `@deepseek-ai/dsh@0.2.0-rc.2`（web profile）· `@tencent-connect/dsh-qqbot@0.5.5` |
-| 自动化测试 | **88 通过 / 2 门控跳过**（真实集成测试按 `DDA_E2E=1` 启用；集成 2 项已单独实跑通过） |
+| 自动化测试 | **132 通过 / 3 门控跳过**（真实集成测试按 `DDA_E2E=1` 启用；API 配置落地测试按 `DDA_DSH_BIN` 启用） |
+| API 配置（M3.1） | 图形化配置 DeepSeek 官方模板或其它 OpenAI 兼容网关；密钥仅 DPAPI 密文 + 启动时注入；真实连接测试与 9 类错误分类；写入 Harness patch 并 `--dump-config` 回读校验 |
 | 版本信息 | `package.json` / `app.getVersion()` / exe FileVersion / ProductVersion / 安装包文件名 **均为 0.2.0** |
-| 最终安装包 | `release/deepseek-deploy-assistant-0.2.0-x64.exe`（82,723,406 B，SHA-256 `08070338367AD04856A739E7D45023E52598C199D35D2928A5DC829C1B2306F6`） |
+| 最终安装包 | `release/deepseek-deploy-assistant-0.2.0-x64.exe`（82,845,239 B，SHA-256 `9AD3C4130FCAB4F447C698BB0E305B7B5325A737439892BF4F0A57F0C5B1733A`） |
 | 本轮实机环境 | Windows 11 Pro 10.0.26200，非管理员，**非干净机**（存在系统 Node） |
 | QQ-GATE-01 | **未通过**（真实扫码、消息收发、图片、断线重连、重启恢复尚未验证） |
 | 干净 Win11 第二环境验证 | **未通过**（本机不是干净机；验收方案见 [M2.1 独立审计报告](./docs/M2.1-独立审计报告.md) §6.4） |
@@ -53,6 +54,21 @@
 | 卸载残留空程序目录 | NSIS `customUnInstall` 回收（只删空目录） |
 
 详见 [M2.1 修复记录](./docs/M2.1-修复记录.md)。
+
+## M3.1 API 配置（0.2.0 起）
+
+| 能力 | 说明 |
+|---|---|
+| 图形化配置 | DeepSeek 官方模板（预填地址与模型）或任意 OpenAI 兼容网关；只需填 **服务类型 + API Key** |
+| 密钥安全 | 仅 DPAPI 密文落盘；启动 Harness 时作为 `apiKeyEnv` 环境变量注入（磁盘上无明文密钥） |
+| 真实连接测试 | 一次最小请求，分 9 类结果（鉴权/配额/网络/DNS/模型不存在/服务端/响应异常/超时/成功），不以 HTTP 200 判成功；推理模型只回思考块也算成功 |
+| 写入 Harness | 写入 profile 的 `cordis.patch.yml` 受管块（`llm-deepseek` 或 `llm-pi-ai` + `agent-default-model`），写前备份 |
+| 回读校验 | `dsh --profile web --dump-config` 解析组合树，确认路由与默认模型真的生效；失败自动回滚 |
+| 修改 / 删除 | 覆盖写入；删除需二次确认，移除配置块并清除密文 |
+
+> 真实 Key 已实测通过（HTTP 200 + 模型回复，`verdict=ok`）；仅"Harness Web 界面内人工对话"待人工确认一次，详见 [M3.1 已知问题 K-M3-01](./docs/M3.1-已知问题.md)。
+
+**使用顺序**：先在第 3 节"开始部署"装好 Harness（联网下载 Node / pnpm / dsh），部署成功后才能启动 Harness；未部署时启动按钮禁用并给出提示。本软件**不复用**你手动安装的官方 Harness，它会在 `%LOCALAPPDATA%\DeepSeekDeployAssistant` 下部署自己的隔离副本。
 
 ---
 
@@ -106,6 +122,7 @@ $env:DDA_E2E = "1"; pnpm test
 | [M1 验收报告](./docs/M1-验收报告.md) | 首个可运行安装器与部署链路 |
 | [M2 验收报告](./docs/M2-验收报告.md) · [实施](./docs/M2-实施报告.md) · [测试](./docs/M2-测试报告.md) · [已知问题](./docs/M2-已知问题.md) | 任务控制、诊断导出、稳定性修复与真实证据（结论已被 M2.1 修订） |
 | [M2.1 独立审计](./docs/M2.1-独立审计报告.md) · [修复记录](./docs/M2.1-修复记录.md) · [验收报告](./docs/M2.1-验收报告.md) | 对 M2 的独立复核：8 个真实缺陷（含 1 个会删除用户 profile 的 P0）、版本信息校正、重建安装包与 SHA-256 |
+| [M3.1 技术调查](./docs/M3.1-技术调查报告.md) · [实施](./docs/M3.1-实施报告.md) · [测试](./docs/M3.1-测试报告.md) · [已知问题](./docs/M3.1-已知问题.md) · [验收](./docs/M3.1-验收报告.md) | API 配置与真实连接：Harness 官方配置层与凭据 seam 复用、DPAPI 密钥、连接测试错误分类、回读校验与回滚 |
 
 ---
 

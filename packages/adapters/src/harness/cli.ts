@@ -31,7 +31,12 @@ export interface DshCli {
   listPlugins(profile: string): Promise<PluginState[]>;
   addPlugin(profile: string, spec: string): Promise<void>;
   removePlugin(profile: string, name: string): Promise<void>;
-  launchWeb(profile: string, port: number, timeoutMs?: number): Promise<{ handle: ChildHandle; ready: Promise<{ url: string; token: string }> }>;
+  launchWeb(
+    profile: string,
+    port: number,
+    timeoutMs?: number,
+    extraEnv?: Record<string, string>,
+  ): Promise<{ handle: ChildHandle; ready: Promise<{ url: string; token: string }> }>;
 }
 
 export function createDshCli(options: DshEnvOptions): DshCli {
@@ -76,25 +81,46 @@ export function createDshCli(options: DshEnvOptions): DshCli {
       await run(['plugin', '--profile', profile, 'remove', name], 10 * 60_000);
     },
 
-    async launchWeb(profile, port, timeoutMs = WEB_START_TIMEOUT_MS) {
+    async launchWeb(profile, port, timeoutMs = WEB_START_TIMEOUT_MS, extraEnv) {
       const args = [bin, '--profile', profile, '--no-open', '--port', String(port)];
-      const handle = spawnCommand({ exePath: exe, args, env: dshEnv(options) });
+      // extraEnv carries the user's API credential into the harness credential seam; it is never persisted.
+      const handle = spawnCommand({ exePath: exe, args, env: dshEnv(options, extraEnv) });
       const ready = new Promise<{ url: string; token: string }>((resolve, reject) => {
         let buffer = '';
+        let settled = false;
+        const fail = (message: string) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error(message));
+        };
+        const succeed = (value: { url: string; token: string }) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        };
         const timer = setTimeout(() => {
           // A silent timeout is undiagnosable: keep the tail of what the child actually said.
           const tail = buffer.trim().slice(-400) || '（无输出）';
-          reject(new Error(`等待 dsh web 启动超时（${Math.round(timeoutMs / 1000)}s）：${tail}`));
+          fail(`等待 dsh web 启动超时（${Math.round(timeoutMs / 1000)}s）：${tail}`);
         }, timeoutMs);
+        // Missing runtime (node.exe not deployed) surfaces here as ENOENT instead of an uncaught throw.
+        handle.child.once('error', (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') {
+            fail(`找不到 Harness 运行时：${exe}。请先完成"一键部署"，再启动 Harness。`);
+            return;
+          }
+          fail(`无法启动 Harness 运行时（${error.code ?? 'UNKNOWN'}）：${error.message}`);
+        });
         handle.child.stdout.setEncoding('utf8');
         handle.child.stdout.on('data', (chunk: string) => {
           buffer += chunk;
           const match = /(http:\/\/127\.0\.0\.1:\d+\/?\?token=[A-Za-z0-9_-]+)/.exec(buffer);
           if (match) {
-            clearTimeout(timer);
             const raw = match[1]!;
             const token = /token=([A-Za-z0-9_-]+)/.exec(raw)?.[1] ?? '';
-            resolve({ url: raw, token });
+            succeed({ url: raw, token });
           }
         });
         handle.child.stderr.setEncoding('utf8');
@@ -102,8 +128,7 @@ export function createDshCli(options: DshEnvOptions): DshCli {
           buffer += chunk;
         });
         handle.child.once('close', (code) => {
-          clearTimeout(timer);
-          reject(new Error(`dsh web 提前退出（code=${code}）：${buffer.slice(-400)}`));
+          fail(`dsh web 提前退出（code=${code}）：${buffer.trim().slice(-400) || '（无输出）'}`);
         });
       });
       return { handle, ready };

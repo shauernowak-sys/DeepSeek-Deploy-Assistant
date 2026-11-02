@@ -1,0 +1,95 @@
+# M3.1 真实环境验收：静默安装 → 一键部署 → 真实 Key 调用
+日期：2026-11-03
+环境：Windows 11 Pro 10.0.26200，非管理员，用户已有官方 Harness 桌面端（`%USERPROFILE%\.dsh`，与本产品隔离）
+被测产物：`release/deepseek-deploy-assistant-0.2.0-x64.exe`（FileVersion 0.2.0）静默安装到 `%LOCALAPPDATA%\Programs\DeepSeek Deploy Assistant`
+
+## 1. 静默安装
+```
+install exit=0
+FileVersion     : 0.2.0
+ProductVersion  : 0.2.0.0
+aser/app.asar mtime: 2026-11-03 01:15:34（对应本轮重建）
+```
+
+## 2. 一键部署（第 3 节，真实网络）
+驱动方式：打包应用 + CDP，调用与"开始部署"按钮相同的 IPC（`task:start`），并轮询 `task:status`。
+
+```
+app spawned
+version {"badge":["M2 原型 · 0.2.0","QQ-GATE-01 未通过"],"launchDisabled":true,
+         "hint":"还不能启动：Harness 本体尚未安装。请先在第 3 节点“开始部署”（需要联网，约几分钟），部署成功后再回到这里启动。"}
+startDeploy -> {"taskId":"full-deploy-0_2_0-rc_2"}
+7s  status=running step=download-node  | check-disk=succeeded, download-node=running
+10s status=running step=extract-node   | download-node=succeeded, extract-node=running
+13s status=running step=verify-node    | extract-node=succeeded, verify-node=running
+16s status=running step=ensure-pnpm    | verify-node=succeeded, ensure-pnpm=running
+19s status=running step=install-dsh    | ensure-pnpm=succeeded, write-shim=succeeded, install-dsh=running
+52s status=running step=install-qqbot  | install-dsh=succeeded, verify-dsh=succeeded, assert-combo=succeeded,
+                                         ensure-profile=succeeded, install-qqbot=running
+58s status=succeeded step=-            | install-qqbot=succeeded, verify-plugin=succeeded, route-report=succeeded
+FINAL status=succeeded error=none
+  succeeded check-disk / download-node / extract-node / verify-node / ensure-pnpm / write-shim / install-dsh /
+            verify-dsh / assert-combo / ensure-profile / install-qqbot / verify-plugin / route-report   (13/13)
+harnessInfo -> {"dsh":"0.2.0-rc.2","node":"22.23.4","profile":"web","profileExists":true,"plugins":1,"task":"succeeded"}
+apiStatus   -> configured=true, keyMask=sk-****6ea5, harnessInstalled=true
+```
+
+部署后磁盘占用（`%LOCALAPPDATA%\DeepSeekDeployAssistant`）：
+```
+runtimes = 116.1 MB   harness = 452.5 MB   cache = 490 MB   dsh-home = 5.6 MB
+profiles = web
+```
+
+## 3. 真实 Key 连接测试：修复前（缺陷发现）
+同一份已保存的凭据（用户此前在界面录入，`sk-****6ea5`），点击"测试连接"等价调用：
+
+```
+apiTest -> {"verdict":"bad-response","message":"接口返回了 JSON，但没有模型回复内容",
+            "httpStatus":200,"millis":942,
+            "steps":[...,{"stage":"request","ok":true,"detail":"HTTP 200","millis":935},
+                          {"stage":"response","ok":false,"detail":"响应缺少模型回复字段"}],
+            "sample":"{\"id\":\"8cbb96c2-...\",\"type\":\"message\",\"role\":\"assistant\",
+                       \"model\":\"deepseek-flash\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user just said ...
+```
+
+判定：真实 200、鉴权通过、模型存在、**确实有模型输出**，但旧解析要求必须出现 `text` 块；
+`deepseek-flash` 是推理模型，`max_tokens=16` 时预算全花在 `thinking` 块上，没有 `text` 块 →
+被误判为"响应格式异常"。属于真实缺陷（P1，会让有效 Key 的用户以为配置失败）。
+
+## 4. 修复后：真实 Key 成功调用
+修复：`checkReply()` 改按结构判定（Anthropic：`type=message` 且 `content` 非空数组即有效；
+OpenAI 兼容：`choices[0].message` 存在，`content` / `reasoning_content` / `tool_calls` 任一有内容即有效），
+`max_tokens` 16 → 64。
+
+```
+apiTest(stored key) -> {"verdict":"ok","message":"连接成功（耗时 767 ms，模型 deepseek-flash）",
+  "httpStatus":200,"millis":767,"model":"deepseek-flash",
+  "steps":[{"stage":"address","ok":true,"detail":"https://api.deepseek.com/anthropic/v1/messages","millis":0},
+           {"stage":"dns","ok":true,"detail":"api.deepseek.com → 198.18.0.70","millis":9},
+           {"stage":"request","ok":true,"detail":"HTTP 200","millis":758},
+           {"stage":"response","ok":true,"detail":"回复长度 7 字符","millis":0},
+           {"stage":"model","ok":true,"detail":"模型 deepseek-flash","millis":0}],
+  "sample":"{\"id\":\"53694bc5-...\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"deepseek-flash\",
+             \"content\":[{\"type\":\"thinking\",...}]",
+  "harness":{"ok":true,"problems":[],"method":"structured"}}
+```
+
+其中 `harness.ok=true / problems=[] / method=structured` 是保存流程里的 `--dump-config` 结构化回读结果。
+
+## 5. Harness 启动与配置生效（真实已部署根）
+```
+launchHarness -> {"ok":true,"running":true,"health":{"level":"usable","httpStatus":401,"detail":"鉴权通过，已返回应用外壳"}}
+harnessStatus -> {"running":true,"pid":11568,"health":{"level":"usable","httpStatus":401,"detail":"鉴权通过，已返回应用外壳"}}
+```
+
+`dsh --profile web --dump-config`（DSH_HOME = 产品数据目录下的 dsh-home，输出 1277 行）：
+```
+52: provider: deepseek-official
+53: model: deepseek-flash
+375: apiKeyEnv: DEEPSEEK_API_KEY
+```
+即：我们写入的 `agent-default-model`（provider/model）与 `llm-deepseek`（apiKeyEnv）确实进入了 Harness 的组合配置。
+
+## 6. 结论与仍未验证项
+- 已验证：静默安装、一键部署（13/13，58s）、真实 Key → HTTP 200 + 模型回复、错误分类、配置写入与回读、Harness 启动可用。
+- **未验证**：在 Harness Web 界面里发一条消息并收到回复（需要人工在浏览器里操作；本轮未做，留待验收人 1 分钟确认）。

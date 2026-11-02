@@ -7,6 +7,7 @@ import { DiagnosticsService } from './services/diag-service';
 import { EnvService } from './services/env-service';
 import { HarnessService } from './services/harness-service';
 import { Secrets } from './security/secrets';
+import { ApiService } from './services/api-service';
 import { attachEventForwarding, registerIpc } from './ipc/register';
 
 const gotLock = app.requestSingleInstanceLock();
@@ -58,11 +59,12 @@ if (!gotLock) {
     const broadcast = attachEventForwarding(win);
     const deploy = new DeployService({ container, onEvent: broadcast });
     const env = new EnvService(container);
-    const harness = new HarnessService(container);
-    const diagnostics = new DiagnosticsService(container, env, harness, () => deploy.summary());
     const secrets = new Secrets(container.paths.root);
+    const api = new ApiService(container, secrets);
+    const harness = new HarnessService(container, () => api.launchEnv());
+    const diagnostics = new DiagnosticsService(container, env, harness, () => deploy.summary());
 
-    registerIpc({ container, deploy, env, harness, diagnostics, secrets, broadcast });
+    registerIpc({ container, deploy, env, harness, diagnostics, secrets, api, broadcast });
 
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
     if (rendererUrl) {

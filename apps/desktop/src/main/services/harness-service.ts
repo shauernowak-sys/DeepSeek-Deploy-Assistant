@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 
 import { probeHarness } from '@dda/core';
-import { createDshCli, type ChildHandle, type DshCli } from '@dda/adapters';
-import { BASELINE, type HealthReport, type PluginState } from '@dda/spec';
+import { createDshCli, dshBinJs, fileExists, nodeExe, type ChildHandle, type DshCli } from '@dda/adapters';
+import { BASELINE, DdaError, ERROR_CODES, type HealthReport, type PluginState } from '@dda/spec';
 
 import type { Container } from './container';
 
@@ -18,7 +18,28 @@ export class HarnessService {
   private session?: { handle: ChildHandle; url: string; token: string; pid?: number; health: HealthReport };
   private cli?: DshCli;
 
-  constructor(private readonly container: Container) {}
+  constructor(
+    private readonly container: Container,
+    /** Injects the user's API credential into the launch environment (never written to disk). */
+    private readonly apiEnv: () => Promise<Record<string, string>> = async () => ({}),
+  ) {}
+
+  /**
+   * Launching before the deployment step has produced a runtime used to fail inside `spawn` with a
+   * raw ENOENT; ordinary users cannot act on that. Fail early with something they can act on.
+   */
+  private async assertRuntimeInstalled(): Promise<void> {
+    const { paths } = this.container;
+    const missing: string[] = [];
+    if (!(await fileExists(nodeExe(paths)))) missing.push(`Node（${nodeExe(paths)}）`);
+    if (!(await fileExists(dshBinJs(paths)))) missing.push(`Harness 本体（${dshBinJs(paths)}）`);
+    if (missing.length === 0) return;
+    throw new DdaError(
+      ERROR_CODES.E_HARNESS_NOT_DEPLOYED,
+      `Harness 尚未安装，缺少：${missing.join('、')}`,
+      '先在第 3 节点"开始部署"完成安装（需要联网），成功后再启动 Harness',
+    );
+  }
 
   private getCli(): DshCli {
     if (!this.cli) {
@@ -40,8 +61,9 @@ export class HarnessService {
 
   async launch(port = 0): Promise<HarnessStatus> {
     if (this.session) return this.status();
+    await this.assertRuntimeInstalled();
 
-    const { handle, ready } = await this.getCli().launchWeb(BASELINE.dsh.profile, port);
+    const { handle, ready } = await this.getCli().launchWeb(BASELINE.dsh.profile, port, undefined, await this.apiEnv());
     let url: string;
     let token: string;
     try {

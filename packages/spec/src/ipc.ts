@@ -39,6 +39,31 @@ export const SecretSetSchema = z
   })
   .strict();
 
+/** Provider settings coming from the renderer. Values are re-validated in the main process. */
+export const ApiProviderSchema = z
+  .object({
+    template: z.enum(['deepseek', 'openai-compatible']),
+    label: z.string().min(1).max(64),
+    protocol: z.enum(['anthropic-messages', 'openai-completions']),
+    baseUrl: z.string().min(1).max(500),
+    model: z.string().min(1).max(200),
+    credentialRef: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+    contextWindow: z.number().int().positive().max(100_000_000).optional(),
+  })
+  .strict();
+
+export const ApiSaveSchema = z
+  .object({
+    config: ApiProviderSchema,
+    /** Omit to keep the already stored key. */
+    apiKey: z.string().min(8).max(4096).optional(),
+  })
+  .strict();
+
+export const ApiTestSchema = ApiSaveSchema;
+
+export const ApiEmptySchema = z.object({}).strict();
+
 export const LogPathSchema = z.object({}).strict();
 
 export type TaskStartInput = z.infer<typeof TaskStartSchema>;

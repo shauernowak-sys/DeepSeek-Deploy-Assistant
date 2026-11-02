@@ -22,12 +22,16 @@ export class Secrets {
     }
   }
 
+  private async writeAll(all: Record<string, string>): Promise<void> {
+    await mkdir(this.root, { recursive: true });
+    await writeFile(this.file, JSON.stringify(all), 'utf8');
+  }
+
   async set(key: string, value: string): Promise<{ masked: string }> {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('系统加密不可用（DPAPI）');
     const all = await this.readAll();
     all[key] = safeStorage.encryptString(value).toString('base64');
-    await mkdir(this.root, { recursive: true });
-    await writeFile(this.file, JSON.stringify(all), 'utf8');
+    await this.writeAll(all);
     return { masked: mask(value) };
   }
 
@@ -45,6 +49,14 @@ export class Secrets {
   async masked(key: string): Promise<string | undefined> {
     const value = await this.get(key);
     return value ? mask(value) : undefined;
+  }
+
+  /** Removes a stored secret (used when the user deletes the provider configuration). */
+  async remove(key: string): Promise<void> {
+    const all = await this.readAll();
+    if (!(key in all)) return;
+    delete all[key];
+    await this.writeAll(all);
   }
 }
 

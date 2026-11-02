@@ -11,3 +11,7 @@ export * from './health/probe';
 export * from './detect/env';
 export * from './detect/route';
 export * from './diagnose/rules';
+export * from './api/types';
+export * from './api/harness-patch';
+export * from './api/connection-test';
+export * from './api/verify';

@@ -129,13 +129,23 @@ export async function runCommandCapture(options: CaptureOptions): Promise<RunRes
 
 export interface ChildHandle {
   child: ChildProcessWithoutNullStreams;
+  /** Settles when the process started; rejects with the spawn failure (ENOENT/EACCES) instead of throwing. */
+  spawned: Promise<void>;
   stop: () => Promise<void>;
 }
 
 export function spawnCommand(options: RunOptions): ChildHandle {
   const child = spawnChecked(options);
+  // A spawn failure emits 'error' on the ChildProcess; without a listener Node rethrows it as an
+  // uncaught exception in the main process (Electron then shows a raw JS error dialog).
+  const spawned = new Promise<void>((resolve, reject) => {
+    child.once('spawn', () => resolve());
+    child.once('error', (error: Error) => reject(error));
+  });
+  spawned.catch(() => undefined);
   return {
     child,
+    spawned,
     stop: async () => {
       if (child.exitCode !== null) return;
       child.kill();
