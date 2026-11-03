@@ -1,8 +1,8 @@
 import { existsSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { createTaskControl, executePlan, Journal, rollbackPlan } from '@dda/core';
-import type { TaskEvent, TaskSummary } from '@dda/spec';
+import { createTaskControl, executePlan, Journal, rollbackPlan, classifyRollbackTargets } from '@dda/core';
+import type { RollbackPreview, RollbackResult, TaskEvent, TaskSummary } from '@dda/spec';
 import { BASELINE } from '@dda/spec';
 
 import type { Container } from './container';
@@ -138,12 +138,16 @@ export class DeployService {
     const data = await Journal.load(this.journalPath());
     if (!data) return { cleaned: [], cleanupSkipped: true };
 
-    const cleaned = [...data.created];
-    await rollbackPlan(data, this.plan(), (m) => void this.deps.container.logger.warn('cancel-cleanup', m), this.deps.container.paths.root);
+    const cleaned: string[] = [];
+    const outcome = await rollbackPlan(data, this.plan(), (m) => void this.deps.container.logger.warn('cancel-cleanup', m), {
+      pruneAbove: this.deps.container.paths.root,
+      allowedRoots: [this.deps.container.paths.root],
+    });
+    cleaned.push(...outcome.deleted);
     await journal.save(data);
     await this.deps.container.logger.info(
       'deploy',
-      `cancelled (wasRunning=${wasRunning}); cleaned ${cleaned.length} path(s) created by this task`,
+      `cancelled (wasRunning=${wasRunning}); cleaned ${cleaned.length} path(s) created by this task, refused ${outcome.refused.length}`,
     );
     return { summary: journal.toSummary(data), cleaned, cleanupSkipped: false };
   }
@@ -153,22 +157,63 @@ export class DeployService {
     return this.summary();
   }
 
-  async rollback(): Promise<TaskSummary> {
+  /**
+   * Read-only half of the rollback dialog: what a confirmed rollback would delete, and which
+   * recorded paths are refused because they cannot be attributed to a managed folder.
+   */
+  async rollbackPreview(): Promise<RollbackPreview> {
+    const roots = [this.deps.container.paths.root];
+    const data = await Journal.load(this.journalPath());
+    const created = data?.created ?? [];
+    const entries = created.length > 0 ? await classifyRollbackTargets(created, { roots }) : [];
+    return {
+      taskId: this.taskId,
+      entries,
+      deletableCount: entries.filter((e) => e.exists && e.deletable).length,
+      existingCount: entries.filter((e) => e.exists).length,
+      roots,
+    };
+  }
+
+  /**
+   * Destructive: deletes the paths this task recorded. Requires `confirmed` so a stray click or
+   * a renderer bug can never trigger it, and every path is re-verified against the managed root.
+   */
+  async rollback(confirmed: boolean): Promise<RollbackResult> {
     const { container } = this.deps;
+    const empty: RollbackResult = { ok: false, message: '', deleted: [], refused: [] };
+
+    if (!confirmed) {
+      return { ...empty, message: '回滚需要二次确认，未删除任何文件' };
+    }
+    if (this.isRunning) {
+      return { ...empty, message: '任务正在运行，请先取消部署再回滚' };
+    }
+
     const journal = new Journal(this.journalPath());
     const data = await Journal.load(this.journalPath());
     if (!data) {
-      return {
-        taskId: this.taskId,
-        status: 'failed',
-        steps: [],
-        startedAt: new Date().toISOString(),
-        error: '没有可回滚的任务',
-      };
+      return { ...empty, message: '没有可回滚的任务记录' };
     }
-    await rollbackPlan(data, this.plan(), (m) => void container.logger.info('rollback', m), container.paths.root);
+
+    const outcome = await rollbackPlan(data, this.plan(), (m) => void container.logger.info('rollback', m), {
+      pruneAbove: container.paths.root,
+      allowedRoots: [container.paths.root],
+    });
     await journal.save(data);
-    return journal.toSummary(data);
+
+    const refusedNote =
+      outcome.refused.length > 0 ? `；有 ${outcome.refused.length} 个路径无法确认归属，已保留未删除` : '';
+    return {
+      ok: outcome.refused.length === 0,
+      message:
+        outcome.deleted.length === 0
+          ? `没有需要删除的内容${refusedNote}`
+          : `已删除本次任务创建的 ${outcome.deleted.length} 个路径${refusedNote}`,
+      summary: journal.toSummary(data),
+      deleted: outcome.deleted,
+      refused: outcome.refused,
+    };
   }
 
   private plan() {

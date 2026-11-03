@@ -157,7 +157,7 @@ describe('任务控制：取消', () => {
     const { journal, file } = await makeJournal();
     await executePlan({ taskId: 't-prune', scenario: 'test', steps, journal, resume: false, log: () => undefined });
     const data = JSON.parse(await readFile(file, 'utf8')) as Parameters<typeof rollbackPlan>[0];
-    await rollbackPlan(data, steps, () => undefined, root);
+    await rollbackPlan(data, steps, () => undefined, { pruneAbove: root });
 
     expect(await readdir(root)).toEqual(['dsh-home']);
     expect(await readFile(join(keepDir, 'user-config.json'), 'utf8')).toContain('sentinel');

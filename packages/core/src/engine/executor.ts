@@ -1,12 +1,13 @@
 import { readdir, rm, rmdir } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 
-import type { StepState, TaskEvent, TaskSummary } from '@dda/spec';
+import type { RollbackTarget, StepState, TaskEvent, TaskSummary } from '@dda/spec';
 
 import { Journal } from './journal';
 import type { JournalData } from './journal';
 import type { Step, StepContext } from './plan';
 import { totalWeight } from './plan';
+import { classifyRollbackTargets } from './safety';
 
 /**
  * Cooperative control channel. The engine only *observes* flags; it never kills processes
@@ -54,8 +55,10 @@ export interface ExecuteResult {
 /**
  * Runs steps in order. Guarantees:
  *  - idempotent: `precondition` true -> `skipped`, safe to re-run
- *  - resumable: interruption (failure / user pause) keeps completed steps
+ *  - resumable: any interruption (failure / user pause) keeps completed steps
  *  - cancellable: user cancel stops at the next checkpoint and marks the task `cancelled`
+ *  - honest status: `paused` only for a user pause, `failed` for a step error, so the UI can
+ *    never present a broken deployment as "paused, you can continue"
  *  - rollback: only deletes paths recorded in `created[]` (never user data)
  */
 export async function executePlan(options: ExecuteOptions): Promise<ExecuteResult> {
@@ -210,7 +213,9 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
         progress: completedWeight / weight,
         message: state.message,
       });
-      return finish('paused', { error: state.message, pausedByUser: false });
+      // A step error is a failure, not a pause: only a user pause may report `paused`, otherwise
+      // the UI would show "已暂停（可继续）" for a task that actually needs attention.
+      return finish('failed', { error: state.message, pausedByUser: false });
     }
   }
 
@@ -220,14 +225,27 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
 /**
  * Delete only paths that this task created (reverse order, tolerate already-missing).
  * Used by both "rollback" and "cancel with cleanup" — never touches user data.
- * With `root`, directories left empty by the deletion are pruned, but never above `root`.
+ *
+ * With `allowedRoots` every journal path is verified first (see `classifyRollbackTargets`);
+ * anything that cannot be attributed to a managed folder is refused instead of deleted.
+ * With `pruneAbove`, directories left empty by the deletion are pruned, but never above it.
  */
+export interface RollbackOptions {
+  pruneAbove?: string;
+  allowedRoots?: string[];
+}
+
+export interface RollbackOutcome {
+  deleted: string[];
+  refused: RollbackTarget[];
+}
+
 export async function rollbackPlan(
   data: JournalData,
   steps: Step[],
   log: (m: string) => void,
-  root?: string,
-): Promise<void> {
+  options: RollbackOptions = {},
+): Promise<RollbackOutcome> {
   for (const step of [...steps].reverse()) {
     if (!step.rollback) continue;
     const ctx: StepContext = {
@@ -243,16 +261,32 @@ export async function rollbackPlan(
       log(`[rollback:${step.id}] 失败: ${String(error)}`);
     }
   }
-  for (const created of data.created) {
-    try {
-      await rm(created, { recursive: true, force: true });
-    } catch (error) {
-      log(`[rollback] 无法删除 ${created}: ${String(error)}`);
+
+  const targets: RollbackTarget[] = options.allowedRoots?.length
+    ? await classifyRollbackTargets(data.created, { roots: options.allowedRoots })
+    : data.created.map((path) => ({ path, exists: true, deletable: true }));
+
+  const deleted: string[] = [];
+  const refused: RollbackTarget[] = [];
+  for (const target of targets) {
+    if (!target.deletable) {
+      refused.push(target);
+      log(`[rollback] 拒绝删除 ${target.path}: ${target.reason ?? '无法确认归属'}`);
+      continue;
     }
-    if (root) await pruneEmptyParents(created, root);
+    if (!target.exists) continue;
+    try {
+      await rm(target.path, { recursive: true, force: true });
+      deleted.push(target.path);
+    } catch (error) {
+      refused.push({ ...target, deletable: false, reason: String(error) });
+      log(`[rollback] 无法删除 ${target.path}: ${String(error)}`);
+    }
+    if (options.pruneAbove) await pruneEmptyParents(target.path, options.pruneAbove);
   }
   data.status = 'rolled-back';
   data.finishedAt = new Date().toISOString();
+  return { deleted, refused };
 }
 
 /** Removes directories that our own deletion emptied; stops at the first non-empty parent. */

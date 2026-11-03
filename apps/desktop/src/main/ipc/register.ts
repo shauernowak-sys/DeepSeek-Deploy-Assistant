@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { join } from 'node:path';
 
 import {
   DiagExportSchema,
@@ -26,6 +25,7 @@ import {
   SnowLumaVerifyInstallSchema,
   TaskCancelSchema,
   TaskIdSchema,
+  TaskRollbackSchema,
   TaskStartSchema,
   BASELINE,
   QQ_GATE_01,
@@ -272,9 +272,14 @@ export function registerIpc(ctx: IpcContext): void {
     return ctx.deploy.summary();
   });
 
-  ipcMain.handle('task:rollback', async (_event, raw: unknown) => {
+  ipcMain.handle('task:rollback-preview', async (_event, raw: unknown) => {
     TaskIdSchema.parse(raw);
-    return ctx.deploy.rollback();
+    return ctx.deploy.rollbackPreview();
+  });
+
+  ipcMain.handle('task:rollback', async (_event, raw: unknown) => {
+    const input = TaskRollbackSchema.parse(raw);
+    return ctx.deploy.rollback(input.confirmed);
   });
 
   ipcMain.handle('task:pause', async (_event, raw: unknown) => {
@@ -325,15 +330,6 @@ export function registerIpc(ctx: IpcContext): void {
     return { ok: true };
   });
 
-  ipcMain.handle('plugin:list', async () => ctx.harness.listPlugins());
-
-  ipcMain.handle('plugin:install-qq', async () => {
-    await ctx.harness.installQqPlugin();
-    return ctx.harness.listPlugins();
-  });
-
-  ipcMain.handle('api:status', async () => ctx.api.status());
-
   ipcMain.handle('api:test', async (_event, raw: unknown) => {
     const input = ApiTestSchema.parse(raw);
     return ctx.api.test(input);
@@ -364,12 +360,6 @@ export function registerIpc(ctx: IpcContext): void {
     const result = await ctx.diagnostics.export();
     await shell.showItemInFolder(result.zipPath);
     return { cancelled: false as const, ...result };
-  });
-
-  ipcMain.handle('log:export', async () => {
-    const target = join(ctx.container.paths.root, 'logs-export.txt');
-    await shell.openPath(ctx.container.paths.logs);
-    return { path: target, note: 'M1 阶段仅打开日志目录；诊断包打包在 M5 实现' };
   });
 }
 

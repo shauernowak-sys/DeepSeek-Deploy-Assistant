@@ -248,6 +248,11 @@ input[type='password'] {
   background: rgba(240, 180, 41, 0.08);
 }
 
+.banner.bad {
+  border-color: rgba(239, 83, 80, 0.45);
+  background: rgba(239, 83, 80, 0.08);
+}
+
 .failure {
   display: flex;
   gap: 10px;

@@ -72,6 +72,33 @@ export interface TaskEvent {
   message?: string;
 }
 
+/** One path recorded in the task journal, judged against the managed install roots. */
+export interface RollbackTarget {
+  path: string;
+  exists: boolean;
+  /** false when the path is outside the managed roots, a symlink or otherwise unverified. */
+  deletable: boolean;
+  /** Set only when `deletable` is false, so the UI can explain why nothing was deleted. */
+  reason?: string;
+}
+
+export interface RollbackPreview {
+  taskId: string;
+  entries: RollbackTarget[];
+  /** Paths that would really be deleted (exists && deletable). */
+  deletableCount: number;
+  existingCount: number;
+  roots: string[];
+}
+
+export interface RollbackResult {
+  ok: boolean;
+  message: string;
+  summary?: TaskSummary;
+  deleted: string[];
+  refused: RollbackTarget[];
+}
+
 export interface HealthReport {
   level: HealthLevel;
   url: string;

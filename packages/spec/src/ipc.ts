@@ -19,25 +19,22 @@ export const TaskCancelSchema = z
   })
   .strict();
 
+/**
+ * Rollback deletes files, so the renderer must send an explicit `confirmed: true`.
+ * `task:rollback-preview` is the read-only half: it lists what would be removed.
+ */
+export const TaskRollbackSchema = z
+  .object({
+    taskId: z.string().min(1),
+    confirmed: z.boolean(),
+  })
+  .strict();
+
 export const DiagExportSchema = z.object({ confirmed: z.boolean() }).strict();
 
 export const HarnessLaunchSchema = z.object({
   port: z.number().int().min(0).max(65535).default(0),
 }).strict();
-
-export const PluginInstallSchema = z
-  .object({
-    name: z.string().min(1).max(214),
-    version: z.string().regex(/^[0-9A-Za-z.\-+]+$/),
-  })
-  .strict();
-
-export const SecretSetSchema = z
-  .object({
-    key: z.enum(['deepseek.apiKey']),
-    value: z.string().min(1).max(4096),
-  })
-  .strict();
 
 /** Provider settings coming from the renderer. Values are re-validated in the main process. */
 export const ApiProviderSchema = z
@@ -64,8 +61,6 @@ export const ApiTestSchema = ApiSaveSchema;
 
 export const ApiEmptySchema = z.object({}).strict();
 
-export const LogPathSchema = z.object({}).strict();
-
 export type TaskStartInput = z.infer<typeof TaskStartSchema>;
+export type TaskRollbackInput = z.infer<typeof TaskRollbackSchema>;
 export type HarnessLaunchInput = z.infer<typeof HarnessLaunchSchema>;
-export type PluginInstallInput = z.infer<typeof PluginInstallSchema>;

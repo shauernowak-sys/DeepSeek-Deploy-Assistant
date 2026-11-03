@@ -97,7 +97,7 @@ describe('部署计划：清理边界', () => {
       created: [...artifacts],
     };
     await journal.save(data);
-    await rollbackPlan(data, steps, () => undefined, paths.root);
+    await rollbackPlan(data, steps, () => undefined, { pruneAbove: paths.root, allowedRoots: [paths.root] });
 
     expect(await readFile(userConfig, 'utf8')).toBe('{"apiKey":"user-owned"}');
     for (const dir of artifacts) {

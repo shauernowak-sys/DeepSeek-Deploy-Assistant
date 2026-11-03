@@ -119,6 +119,30 @@ interface CancelPreview {
   count: number;
 }
 
+/** Mirrors `RollbackTarget` in @dda/spec — only the fields this view renders. */
+interface RollbackTargetView {
+  path: string;
+  exists: boolean;
+  deletable: boolean;
+  reason?: string;
+}
+
+interface RollbackPreviewView {
+  taskId: string;
+  entries: RollbackTargetView[];
+  deletableCount: number;
+  existingCount: number;
+  roots: string[];
+}
+
+interface RollbackResultView {
+  ok: boolean;
+  message: string;
+  summary?: TaskSummary;
+  deleted: string[];
+  refused: RollbackTargetView[];
+}
+
 interface DiagPreview {
   entries: string[];
   totalBytes: number;
@@ -219,15 +243,13 @@ type Api = {
     taskId: string,
     cleanup: boolean,
   ) => Promise<{ summary?: TaskSummary; cleaned: string[]; cleanupSkipped: boolean }>;
-  rollback: (taskId: string) => Promise<TaskSummary>;
+  rollbackPreview: (taskId: string) => Promise<RollbackPreviewView>;
+  rollback: (taskId: string, confirmed: boolean) => Promise<RollbackResultView>;
   launchHarness: (port?: number) => Promise<{ running: boolean; url?: string; health?: HealthReport }>;
   stopHarness: () => Promise<{ ok: boolean }>;
   harnessStatus: () => Promise<{ running: boolean; url?: string; health?: HealthReport }>;
   harnessInfo: () => Promise<HarnessInfo>;
   openHarness: () => Promise<{ ok: boolean; reason?: string }>;
-  listPlugins: () => Promise<Plugin[]>;
-  installQqPlugin: () => Promise<Plugin[]>;
-  apiStatus: () => Promise<ApiStatusView>;
   apiTest: (payload: { config: ApiProviderView; apiKey?: string }) => Promise<ConnectionView>;
   apiSave: (payload: { config: ApiProviderView; apiKey?: string }) => Promise<SaveView>;
   apiDelete: () => Promise<ApiStatusView>;
@@ -268,7 +290,7 @@ const TASK_LABEL: Record<string, string> = {
   running: '进行中',
   paused: '已暂停（可继续）',
   succeeded: '已完成',
-  failed: '失败',
+  failed: '部署失败',
   cancelled: '已取消',
   'rolled-back': '已回滚',
 };
@@ -332,8 +354,9 @@ export function App(): JSX.Element {
   const [saveMessage, setSaveMessage] = useState<string>();
   const [confirmApiDelete, setConfirmApiDelete] = useState(false);
   const [stepOverrides, setStepOverrides] = useState<Record<string, string>>({});
-  const [modal, setModal] = useState<'cancel' | 'diag' | null>(null);
+  const [modal, setModal] = useState<'cancel' | 'diag' | 'rollback' | null>(null);
   const [cancelPreview, setCancelPreview] = useState<CancelPreview>();
+  const [rollbackPreview, setRollbackPreview] = useState<RollbackPreviewView>();
   const [cleanupOnCancel, setCleanupOnCancel] = useState(true);
   const [diagPreview, setDiagPreview] = useState<DiagPreview>();
   const [diagResult, setDiagResult] = useState<string>();
@@ -386,8 +409,10 @@ export function App(): JSX.Element {
     if (i.task) mergeTask(i.task);
   }, [api, mergeTask]);
 
-  /** QQ 状态依赖运行时证据，启动后按 4 秒轮询（状态本身走缓存，不会每次执行 plugin list）。 */
+  /** QQ 状态依赖运行时证据，启动后按 4 秒轮询（状态本身走缓存，不会每次执行 plugin list）。
+   *  只在「官方 QQ」页签可见时轮询：个人 QQ 面板有自己的快照推送，两套轮询不再同时运行。 */
   useEffect(() => {
+    if (qqTab !== 'official') return;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -406,7 +431,7 @@ export function App(): JSX.Element {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [api]);
+  }, [api, qqTab]);
 
   const refreshQq = useCallback(
     async (refreshPlugins = false) => {
@@ -493,11 +518,28 @@ export function App(): JSX.Element {
       await refreshInfo();
     });
 
-  const rollback = () =>
+  /** 危险操作：先取只读预览，弹窗确认后才真正删除。 */
+  const openRollback = () =>
+    run('rollback-preview', async () => {
+      if (!task) return;
+      const preview = await api.rollbackPreview(task.taskId);
+      setRollbackPreview(preview);
+      setModal('rollback');
+    });
+
+  const confirmRollback = () =>
     run('rollback', async () => {
       if (!task) return;
-      mergeTask(await api.rollback(task.taskId));
-      setNotice('已回滚本次任务创建的内容。');
+      const result = await api.rollback(task.taskId, true);
+      mergeTask(result.summary);
+      setModal(null);
+      setNotice(result.message);
+      if (!result.ok && result.refused.length > 0) {
+        setError(`${result.refused.length} 个路径无法确认归属，已保留：\n${result.refused.map((r) => `${r.path}（${r.reason ?? '未知原因'}）`).join('\n')}`);
+      }
+      // 回滚会改变磁盘上的真实状态，必须重新读取环境与部署信息，而不是只改文案。
+      setEnv(await api.scanEnv());
+      await refreshInfo();
     });
 
   const launch = () =>
@@ -597,6 +639,8 @@ export function App(): JSX.Element {
 
   const running = task?.status === 'running';
   const paused = task?.status === 'paused';
+  const failed = task?.status === 'failed';
+  const completedSteps = steps.filter((s) => s.status === 'succeeded' || s.status === 'skipped').length;
   const failure = failureCategory(task?.error);
   const stage = running ? currentStep ?? '准备中' : undefined;
   const routeClass =
@@ -616,8 +660,13 @@ export function App(): JSX.Element {
 
       {paused && (
         <div className="banner warn">
-          有未完成的部署任务（{task?.pausedByUser ? '你已暂停' : '上次中断'}）。已完成 {steps.filter((s) => s.status === 'succeeded' || s.status === 'skipped').length} /{' '}
-          {steps.length} 步，点“继续”即可从下一步开始。
+          已暂停（你主动暂停）。已完成 {completedSteps} / {steps.length} 步，点“继续”从下一步开始，已完成的步骤不会重跑。
+        </div>
+      )}
+      {failed && (
+        <div className="banner bad">
+          部署失败：{task?.error ?? '未知原因'}。已完成 {completedSteps} / {steps.length} 步。失败不等于暂停：可以点“重试失败步骤”
+          从失败的那一步继续，或先点“回滚本次创建…”清理本次部署产物。
         </div>
       )}
       {notice && <div className="banner ok">{notice}</div>}
@@ -747,17 +796,30 @@ export function App(): JSX.Element {
           <button onClick={pause} disabled={Boolean(busy) || !running}>
             {busy === 'pause' ? '暂停中…' : '暂停'}
           </button>
-          <button onClick={resume} disabled={Boolean(busy) || !paused}>
-            {busy === 'resume' ? '继续中…' : '继续'}
+          <button onClick={resume} disabled={Boolean(busy) || !(paused || failed)}>
+            {busy === 'resume' ? '重试中…' : failed ? '重试失败步骤' : '继续'}
           </button>
-          <button onClick={openCancel} disabled={Boolean(busy) || !task || !['running', 'paused', 'pending'].includes(task.status)}>
+          <button
+            onClick={openCancel}
+            disabled={Boolean(busy) || !task || !['running', 'paused', 'pending', 'failed'].includes(task.status)}
+          >
             取消…
           </button>
-          <button onClick={rollback} disabled={Boolean(busy) || !task || running}>
-            回滚本次创建
+          <button onClick={openRollback} disabled={Boolean(busy) || !task || running}>
+            回滚本次创建…
           </button>
           {task && (
-            <span className={`badge ${task.status === 'succeeded' ? 'ok' : ['paused', 'cancelled'].includes(task.status) ? 'warn' : ''}`}>
+            <span
+              className={`badge ${
+                task.status === 'succeeded'
+                  ? 'ok'
+                  : ['paused', 'cancelled'].includes(task.status)
+                    ? 'warn'
+                    : task.status === 'failed'
+                      ? 'bad'
+                      : ''
+              }`}
+            >
               任务：{TASK_LABEL[task.status] ?? task.status}
             </span>
           )}
@@ -1372,6 +1434,45 @@ export function App(): JSX.Element {
               </button>
               <button onClick={() => setModal(null)} disabled={Boolean(busy)}>
                 继续部署
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal === 'rollback' && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h2>回滚本次部署创建的内容？</h2>
+            <p>
+              这会<strong>永久删除</strong>本次部署任务记录在案的产物（Node 运行时、pnpm、Harness 安装目录、下载缓存等）。
+              删除后 Harness 将无法启动，需要重新部署。
+            </p>
+            <div className="modal-body">
+              <p className="muted">
+                将删除 <b>{rollbackPreview?.deletableCount ?? 0}</b> 个路径（共记录{' '}
+                {rollbackPreview?.entries.length ?? 0} 个，当前存在 {rollbackPreview?.existingCount ?? 0} 个）。
+              </p>
+              <pre className="evidence">
+                {(rollbackPreview?.entries ?? [])
+                  .map((e) => `${e.deletable && e.exists ? '×' : '·'} ${e.path}${e.deletable ? '' : `（保留：${e.reason ?? '无法确认归属'}）`}`)
+                  .join('\n') || '（本次任务没有记录任何产物）'}
+              </pre>
+              <p className="muted">
+                只删除上面带 × 的路径，且必须位于本软件的管理目录内（{rollbackPreview?.roots.join('、')}）。
+                你自己的 Harness profile、API 配置、QQ 凭据与其他数据不在删除范围内；无法确认归属的路径一律保留。
+              </p>
+            </div>
+            <div className="row">
+              <button
+                className="primary"
+                onClick={confirmRollback}
+                disabled={Boolean(busy) || (rollbackPreview?.deletableCount ?? 0) === 0}
+              >
+                {busy === 'rollback' ? '回滚中…' : '确认回滚并删除'}
+              </button>
+              <button onClick={() => setModal(null)} disabled={Boolean(busy)}>
+                取消
               </button>
             </div>
           </div>

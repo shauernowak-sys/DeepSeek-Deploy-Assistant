@@ -55,7 +55,7 @@ describe('executor', () => {
     expect(result.summary.status).toBe('succeeded');
   });
 
-  it('失败即 paused，可 resume 且不重复执行已完成步骤', async () => {
+  it('步骤失败记为 failed（不是 paused），可 resume 且不重复执行已完成步骤', async () => {
     const log: string[] = [];
     const { journal, file } = await tempJournal();
     let failOnce = true;
@@ -83,7 +83,9 @@ describe('executor', () => {
     ];
 
     const first = await executePlan({ taskId: 't2', scenario: 'test', steps, journal, resume: false, log: () => undefined });
-    expect(first.summary.status).toBe('paused');
+    expect(first.summary.status).toBe('failed');
+    expect(first.summary.pausedByUser).toBe(false);
+    expect(first.summary.error).toContain('boom');
     expect(first.summary.steps[1]?.status).toBe('failed');
     expect(log).toEqual(['one', 'two']);
 

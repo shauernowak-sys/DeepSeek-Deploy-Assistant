@@ -1,5 +1,5 @@
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 
 import {
   applyManagedBlock,
@@ -11,6 +11,7 @@ import {
   testConnection,
   validateProviderConfig,
   verifyComposedConfig,
+  writeFileAtomic,
   type ApiProviderConfig,
   type ConnectionResult,
   type VerifyResult,
@@ -22,6 +23,8 @@ import type { Container } from './container';
 import type { Secrets } from '../security/secrets';
 
 const SECRET_KEY = 'api.credential';
+/** How many `.dda-backup-*` files are kept per config file before the oldest are removed. */
+const BACKUP_RETENTION = 3;
 
 export interface ApiStatus {
   configured: boolean;
@@ -147,7 +150,7 @@ export class ApiService {
       await writeFile(this.patchPath, applyManagedBlock(currentPatch, config), 'utf8');
 
       if (typedKey || !(await this.secrets.get(SECRET_KEY))) await this.secrets.set(SECRET_KEY, storedKey);
-      await writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf8');
+      await writeFileAtomic(this.configPath, JSON.stringify(config, null, 2));
 
       const harness = await this.verifyHarness(config);
       if (harness && !harness.ok) {
@@ -221,7 +224,34 @@ export class ApiService {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupPath = `${path}.dda-backup-${stamp}`;
     await copyFile(path, backupPath);
+    // Prune only after the new backup exists, so the newest good copy can never be the one removed.
+    await this.pruneBackups(path).catch((error: unknown) => {
+      void this.container.logger.warn('api', `旧备份清理失败（不影响本次保存）: ${String(error)}`);
+    });
     return backupPath;
+  }
+
+  /** Keeps the newest `keep` backups of `path`; older ones are removed. Returns removed files. */
+  private async pruneBackups(path: string, keep = BACKUP_RETENTION): Promise<string[]> {
+    const dir = dirname(path);
+    const prefix = `${basename(path)}.dda-backup-`;
+    const names = await readdir(dir).catch(() => [] as string[]);
+    // Timestamps are ISO-based, so a descending name sort is a descending time sort.
+    const backups = names.filter((name) => name.startsWith(prefix)).sort().reverse();
+    const removed: string[] = [];
+    for (const name of backups.slice(keep)) {
+      const full = join(dir, name);
+      try {
+        await rm(full, { force: true });
+        removed.push(full);
+      } catch {
+        // A backup held open by another process is not worth failing the save over.
+      }
+    }
+    if (removed.length > 0) {
+      void this.container.logger.info('api', `清理了 ${removed.length} 份旧配置备份（保留最近 ${keep} 份）`);
+    }
+    return removed;
   }
 
   private async restore(backupPath: string | undefined, target: string): Promise<void> {
