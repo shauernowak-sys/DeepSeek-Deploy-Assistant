@@ -16,10 +16,10 @@
 | 平台 | Windows 10/11 x64，per-user 安装，**无需管理员权限** |
 | 技术栈 | Electron 33 + React 18 + TypeScript（strict）+ 纯 CSS；NSIS 安装器 |
 | 技术基线 | Node.js 22.23.4 · pnpm 11.28.5 · `@deepseek-ai/dsh@0.2.0-rc.2`（web profile）· `@tencent-connect/dsh-qqbot@0.5.5` |
-| 自动化测试 | **132 通过 / 3 门控跳过**（真实集成测试按 `DDA_E2E=1` 启用；API 配置落地测试按 `DDA_DSH_BIN` 启用） |
+| 自动化测试 | **174 通过 / 3 门控跳过**（真实集成测试按 `DDA_E2E=1` 启用；API 配置落地测试按 `DDA_DSH_BIN` 启用） |
 | API 配置（M3.1） | 图形化配置 DeepSeek 官方模板或其它 OpenAI 兼容网关；密钥仅 DPAPI 密文 + 启动时注入；真实连接测试与 9 类错误分类；写入 Harness patch 并 `--dump-config` 回读校验 |
 | 版本信息 | `package.json` / `app.getVersion()` / exe FileVersion / ProductVersion / 安装包文件名 **均为 0.2.0** |
-| 最终安装包 | `release/deepseek-deploy-assistant-0.2.0-x64.exe`（82,845,239 B，SHA-256 `9AD3C4130FCAB4F447C698BB0E305B7B5325A737439892BF4F0A57F0C5B1733A`） |
+| 最终安装包 | `release/deepseek-deploy-assistant-0.2.0-x64.exe`（82,855,888 B，SHA-256 `1C491397AC74F72DB8BD70793D32F46EB1F7F9051345CB9F5E5A913310E8AE35`） |
 | 本轮实机环境 | Windows 11 Pro 10.0.26200，非管理员，**非干净机**（存在系统 Node） |
 | QQ-GATE-01 | **未通过**（真实扫码、消息收发、图片、断线重连、重启恢复尚未验证） |
 | 干净 Win11 第二环境验证 | **未通过**（本机不是干净机；验收方案见 [M2.1 独立审计报告](./docs/M2.1-独立审计报告.md) §6.4） |
@@ -69,6 +69,18 @@
 > 真实 Key 已实测通过（HTTP 200 + 模型回复，`verdict=ok`）；仅"Harness Web 界面内人工对话"待人工确认一次，详见 [M3.1 已知问题 K-M3-01](./docs/M3.1-已知问题.md)。
 
 **使用顺序**：先在第 3 节"开始部署"装好 Harness（联网下载 Node / pnpm / dsh），部署成功后才能启动 Harness；未部署时启动按钮禁用并给出提示。本软件**不复用**你手动安装的官方 Harness，它会在 `%LOCALAPPDATA%\DeepSeekDeployAssistant` 下部署自己的隔离副本。
+
+## M3.2 QQ 机器人（0.2.0 起）
+
+| 能力 | 说明 |
+|---|---|
+| 插件管理 | 第 4 节显示 `@tencent-connect/dsh-qqbot` 的精确版本并与验证基线比对；一键安装/修复；失败给出网络与许可限制的说明 |
+| 授权（方式 A） | 填 AppID / AppSecret → 仅 DPAPI 密文落盘 → 启动 Harness 时注入 `QQBOT_APPID`/`QQBOT_SECRET`，配置文件里只有 `__FROM_ENV__` |
+| 授权（方式 B） | 「用官方扫码绑定」：由官方插件走 q.qq.com 授权页；本软件只展示/打开链接，不实现任何 QQ 协议。点下去会**自动打开官方授权页**，正文同时显示二维码与链接，25 秒没出现会给原因并可「重新生成」。**不会删除**你已保存的 AppID/AppSecret（点「取消扫码」即恢复）。扫码成功后插件会把凭据明文写进它自己的 profile，界面会警示并提供「迁移到加密存储」清掉明文 |
+| 连接状态 | 10 个相位（未部署/未装/版本不符/已安装/未授权/等待扫码/连接中/已连接/重连中/失败），`已连接` 只由插件输出 `[im-qqbot] Bot ready!` 触发，并把依据逐条展示 |
+| 消息配置 | 群聊是否需 @、私聊流式、单条上限、群历史条数、私聊/群访问控制与白名单、群/私聊提示词、图片接收与文件发送路径限制；写入后 `--dump-config` 回读，失败自动回滚 |
+
+> **QQ-GATE-01 = 2/6**：方式 A 授权 + 私聊对话已真实验证通过；群内 @、图片、断线自动恢复、重启免扫码、方式 B 扫码**未验证**。详见 [M3.2 验收报告](./docs/M3.2-验收报告.md) 与 [QQ-GATE-01 证据](./docs/M3.2-QQ-GATE-01证据.md)。
 
 ---
 
@@ -123,6 +135,9 @@ $env:DDA_E2E = "1"; pnpm test
 | [M2 验收报告](./docs/M2-验收报告.md) · [实施](./docs/M2-实施报告.md) · [测试](./docs/M2-测试报告.md) · [已知问题](./docs/M2-已知问题.md) | 任务控制、诊断导出、稳定性修复与真实证据（结论已被 M2.1 修订） |
 | [M2.1 独立审计](./docs/M2.1-独立审计报告.md) · [修复记录](./docs/M2.1-修复记录.md) · [验收报告](./docs/M2.1-验收报告.md) | 对 M2 的独立复核：8 个真实缺陷（含 1 个会删除用户 profile 的 P0）、版本信息校正、重建安装包与 SHA-256 |
 | [M3.1 技术调查](./docs/M3.1-技术调查报告.md) · [实施](./docs/M3.1-实施报告.md) · [测试](./docs/M3.1-测试报告.md) · [已知问题](./docs/M3.1-已知问题.md) · [验收](./docs/M3.1-验收报告.md) | API 配置与真实连接：Harness 官方配置层与凭据 seam 复用、DPAPI 密钥、连接测试错误分类、回读校验与回滚 |
+| [M3.2 技术调查](./docs/M3.2-技术调查报告.md) · [实施](./docs/M3.2-实施报告.md) · [测试](./docs/M3.2-测试报告.md) · [已知问题](./docs/M3.2-已知问题.md) · [验收](./docs/M3.2-验收报告.md) · [QQ-GATE-01](./docs/M3.2-QQ-GATE-01证据.md) | QQ 官方机器人：插件版本管理、DPAPI + 环境注入的 AppID/AppSecret、官方扫码入口与明文迁移、10 相位状态机、消息与访问控制配置 |
+| [M3.2 双路线技术调查](./docs/M3.2-双路线技术调查报告.md) · [双路线实施方案](./docs/M3.2-双路线实施方案.md) | 双路线（官方 QQ / 个人 QQ）阶段 A 审计与阶段 B-X1 实验：PRD 需求覆盖、官方 QQ 12 项复核、12 项审计发现、第三方组件许可核对；实测 `dsh-qq-link` 在锁定基线上可用 |
+| [M3.2 SnowLuma 专项调查](./docs/M3.2-SnowLuma专项技术调查报告.md) · [SnowLuma 实施计划](./docs/M3.2-SnowLuma实施计划.md) · [个人 QQ 实施与验收](./docs/M3.2-个人QQ实施与验收记录.md) | 个人 QQ 改为 SnowLuma（PRD R4）：上游事实与许可约束、八相位检测、适配插件与 bridge 取证、真实适配层证据；自动部署待书面授权 |
 
 ---
 

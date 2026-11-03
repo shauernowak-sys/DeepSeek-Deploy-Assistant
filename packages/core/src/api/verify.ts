@@ -32,7 +32,8 @@ interface DumpEntry {
 const JS_TAG = new Type('tag:yaml.org,2002:js', { kind: 'scalar', construct: (data) => String(data) });
 const SCHEMA = DEFAULT_SCHEMA.extend([JS_TAG]);
 
-function parseDump(dump: string): DumpEntry[] | undefined {
+/** Tolerant parse of a composed dump (or any patch layer) — `!!js` tags are kept as strings. */
+export function parseComposedDump(dump: string): DumpEntry[] | undefined {
   try {
     const parsed = loadYaml(dump, { schema: SCHEMA });
     if (!Array.isArray(parsed)) return undefined;
@@ -41,6 +42,8 @@ function parseDump(dump: string): DumpEntry[] | undefined {
     return undefined;
   }
 }
+
+const parseDump = parseComposedDump;
 
 function lastEntry(entries: DumpEntry[], id: string): DumpEntry | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {

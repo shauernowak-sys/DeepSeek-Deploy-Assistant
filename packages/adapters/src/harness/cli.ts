@@ -36,6 +36,8 @@ export interface DshCli {
     port: number,
     timeoutMs?: number,
     extraEnv?: Record<string, string>,
+    /** 原始输出回调：QQ 插件的连接/扫码信号只出现在子进程输出里（官方未提供状态接口）。 */
+    onOutput?: (chunk: string) => void,
   ): Promise<{ handle: ChildHandle; ready: Promise<{ url: string; token: string }> }>;
 }
 
@@ -81,7 +83,7 @@ export function createDshCli(options: DshEnvOptions): DshCli {
       await run(['plugin', '--profile', profile, 'remove', name], 10 * 60_000);
     },
 
-    async launchWeb(profile, port, timeoutMs = WEB_START_TIMEOUT_MS, extraEnv) {
+    async launchWeb(profile, port, timeoutMs = WEB_START_TIMEOUT_MS, extraEnv, onOutput) {
       const args = [bin, '--profile', profile, '--no-open', '--port', String(port)];
       // extraEnv carries the user's API credential into the harness credential seam; it is never persisted.
       const handle = spawnCommand({ exePath: exe, args, env: dshEnv(options, extraEnv) });
@@ -116,6 +118,7 @@ export function createDshCli(options: DshEnvOptions): DshCli {
         handle.child.stdout.setEncoding('utf8');
         handle.child.stdout.on('data', (chunk: string) => {
           buffer += chunk;
+          onOutput?.(chunk);
           const match = /(http:\/\/127\.0\.0\.1:\d+\/?\?token=[A-Za-z0-9_-]+)/.exec(buffer);
           if (match) {
             const raw = match[1]!;
@@ -126,6 +129,7 @@ export function createDshCli(options: DshEnvOptions): DshCli {
         handle.child.stderr.setEncoding('utf8');
         handle.child.stderr.on('data', (chunk: string) => {
           buffer += chunk;
+          onOutput?.(chunk);
         });
         handle.child.once('close', (code) => {
           fail(`dsh web 提前退出（code=${code}）：${buffer.trim().slice(-400) || '（无输出）'}`);

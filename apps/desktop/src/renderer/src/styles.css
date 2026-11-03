@@ -204,6 +204,23 @@ pre.evidence {
   word-break: break-word;
 }
 
+/* terminal QR art: monospace + no wrap so it stays scannable */
+pre.qr {
+  background: #fff;
+  color: #000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 8px 0;
+  font-family: 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: pre;
+  overflow: auto;
+  max-width: 100%;
+}
+
 input[type='password'] {
   background: var(--panel-2);
   color: var(--text);
@@ -273,4 +290,130 @@ code {
   border-radius: 4px;
   font-size: 12px;
   word-break: break-all;
+}
+
+/* ---- personal QQ deployment wizard (M3.3) ---- */
+.stepper {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.stepper .chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.step-line {
+  border-top: 1px solid var(--border);
+  padding: 10px 0 12px;
+}
+
+.step-line:first-of-type {
+  border-top: none;
+}
+
+pre.log {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0 4px;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+details.card > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+h4 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---- M3.3.1 guided install (official download + manual install) ---- */
+.install-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 12px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+code,
+code.hash {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  word-break: break-all;
+}
+
+.install-card code {
+  background: var(--panel);
+}
+
+code.hash {
+  font-size: 11px;
+  color: var(--warn);
+}
+
+.tutorial-step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  border-top: 1px dashed var(--border);
+  padding: 10px 0;
+}
+
+.tutorial-step:first-of-type {
+  border-top: none;
+}
+
+.tutorial-art {
+  flex: 0 0 320px;
+}
+
+.tutorial-art > pre {
+  margin: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .tutorial-step {
+    flex-direction: column;
+  }
+  .tutorial-art {
+    flex: 1 1 auto;
+    width: 100%;
+  }
 }

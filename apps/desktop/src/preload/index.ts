@@ -25,6 +25,55 @@ const api = {
   apiSave: (payload: { config: unknown; apiKey?: string }) => ipcRenderer.invoke('api:save', payload),
   apiDelete: () => ipcRenderer.invoke('api:delete', {}),
   apiStoredRefs: () => ipcRenderer.invoke('api:refs', {}),
+  qqStatus: (refresh = false) => ipcRenderer.invoke('qq:status', { refresh }),
+  qqSettings: () => ipcRenderer.invoke('qq:settings'),
+  qqOutput: () => ipcRenderer.invoke('qq:output'),
+  qqSaveCredentials: (payload: { appId: string; appSecret: string }) =>
+    ipcRenderer.invoke('qq:save-credentials', payload),
+  qqDeleteCredentials: () => ipcRenderer.invoke('qq:delete-credentials', {}),
+  qqSaveSettings: (payload: { settings: unknown; mode: 'env' | 'qr' }) =>
+    ipcRenderer.invoke('qq:save-settings', payload),
+  qqStartBinding: (regenerate = false) => ipcRenderer.invoke('qq:start-binding', { regenerate }),
+  qqCancelBinding: () => ipcRenderer.invoke('qq:cancel-binding', {}),
+  qqMigrate: (confirm: boolean) => ipcRenderer.invoke('qq:migrate', { confirm }),
+  qqRepairPlugin: () => ipcRenderer.invoke('qq:repair-plugin', {}),
+  qqOpenBind: () => ipcRenderer.invoke('qq:open-bind', {}),
+  // ---- 个人 QQ（SnowLuma 路线）----
+  personalStatus: () => ipcRenderer.invoke('personal:status'),
+  personalSettings: () => ipcRenderer.invoke('personal:settings'),
+  personalGuide: () => ipcRenderer.invoke('personal:guide'),
+  personalInstallAdapter: () => ipcRenderer.invoke('personal:install-adapter', {}),
+  personalPushBridge: () => ipcRenderer.invoke('personal:push-bridge', {}),
+  personalBindPrivate: (sessionId: string, uin: string) =>
+    ipcRenderer.invoke('personal:bind-private', { sessionId, uin }),
+  personalVerifyMessage: (verified: boolean) => ipcRenderer.invoke('personal:verify-message', { verified }),
+  personalOpen: (target: 'project' | 'releases' | 'license' | 'eula' | 'webui') =>
+    ipcRenderer.invoke('personal:open', { target }),
+  personalPickInstallDir: () => ipcRenderer.invoke('personal:pick-install-dir', {}),
+  // ---- 个人 QQ 自动部署（SnowLuma）----
+  deployStatus: () => ipcRenderer.invoke('personal:deploy-status'),
+  deployProcess: () => ipcRenderer.invoke('personal:deploy-process'),
+  deployOutput: () => ipcRenderer.invoke('personal:deploy-output'),
+  installDiscovery: () => ipcRenderer.invoke('personal:install-discovery', {}),
+  installVerify: (installDir?: string) =>
+    ipcRenderer.invoke('personal:install-verify', installDir ? { installDir } : {}),
+  installUse: (installDir: string) => ipcRenderer.invoke('personal:install-use', { installDir }),
+  deployStart: (payload: { installDir?: string; repair?: boolean }) =>
+    ipcRenderer.invoke('personal:deploy-start', payload),
+  deployStep: (stepId: string) => ipcRenderer.invoke('personal:deploy-step', { stepId }),
+  deployCancel: () => ipcRenderer.invoke('personal:deploy-cancel', {}),
+  deployStop: () => ipcRenderer.invoke('personal:deploy-stop', {}),
+  deployCredentials: () => ipcRenderer.invoke('personal:deploy-credentials', {}),
+  deployConfig: () => ipcRenderer.invoke('personal:deploy-config', {}),
+  deployConfigBackups: () => ipcRenderer.invoke('personal:deploy-config-backups', {}),
+  deployConfigRestore: (name: string) => ipcRenderer.invoke('personal:deploy-config-restore', { name }),
+  personalUninstall: (input: unknown) => ipcRenderer.invoke('personal:uninstall', input),
+  personalOpenInstallDir: () => ipcRenderer.invoke('personal:open-install-dir', {}),
+  onDeployEvent: (handler: (snapshot: unknown) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, payload: unknown) => handler(payload);
+    ipcRenderer.on('personal:deploy-event', listener);
+    return () => ipcRenderer.removeListener('personal:deploy-event', listener);
+  },
   openLogs: () => ipcRenderer.invoke('log:open'),
   exportLogs: () => ipcRenderer.invoke('log:export'),
   harnessInfo: () => ipcRenderer.invoke('harness:info'),

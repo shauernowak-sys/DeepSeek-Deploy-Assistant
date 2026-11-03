@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { probeHarness } from '@dda/core';
+import { collectQrArt, describeEvent, parseQqLine, probeHarness, stripAnsi, type QqOutputEvent } from '@dda/core';
 import { createDshCli, dshBinJs, fileExists, nodeExe, type ChildHandle, type DshCli } from '@dda/adapters';
 import { BASELINE, DdaError, ERROR_CODES, type HealthReport, type PluginState } from '@dda/spec';
 
@@ -15,13 +15,24 @@ export interface HarnessStatus {
 }
 
 export class HarnessService {
-  private session?: { handle: ChildHandle; url: string; token: string; pid?: number; health: HealthReport };
+  private session?: {
+    handle: ChildHandle;
+    url: string;
+    token: string;
+    pid?: number;
+    health: HealthReport;
+    startedAt: string;
+  };
   private cli?: DshCli;
+  /** 子进程输出环形缓冲：QQ 插件没有状态接口，连接/扫码信号只在 stdout/stderr 里。 */
+  private readonly output: string[] = [];
+  private readonly qqEvents: { at: string; event: QqOutputEvent }[] = [];
+  private partial = '';
 
   constructor(
     private readonly container: Container,
-    /** Injects the user's API credential into the launch environment (never written to disk). */
-    private readonly apiEnv: () => Promise<Record<string, string>> = async () => ({}),
+    /** Injects user credentials into the launch environment (never written to disk). */
+    private readonly launchEnv: () => Promise<Record<string, string>> = async () => ({}),
   ) {}
 
   /**
@@ -62,8 +73,15 @@ export class HarnessService {
   async launch(port = 0): Promise<HarnessStatus> {
     if (this.session) return this.status();
     await this.assertRuntimeInstalled();
+    this.resetOutput();
 
-    const { handle, ready } = await this.getCli().launchWeb(BASELINE.dsh.profile, port, undefined, await this.apiEnv());
+    const { handle, ready } = await this.getCli().launchWeb(
+      BASELINE.dsh.profile,
+      port,
+      undefined,
+      await this.launchEnv(),
+      (chunk) => this.ingest(chunk),
+    );
     let url: string;
     let token: string;
     try {
@@ -83,7 +101,14 @@ export class HarnessService {
       health = await probeHarness({ baseUrl, token });
     }
 
-    this.session = { handle, url, token, pid: handle.child.pid ?? undefined, health };
+    this.session = {
+      handle,
+      url,
+      token,
+      pid: handle.child.pid ?? undefined,
+      health,
+      startedAt: new Date().toISOString(),
+    };
     await this.container.logger.info(
       'harness',
       `launched pid=${this.session.pid} url=${baseUrl} health=${health.level} (${health.detail})`,
@@ -96,6 +121,68 @@ export class HarnessService {
     await this.session.handle.stop();
     this.session = undefined;
     await this.container.logger.info('harness', 'stopped');
+  }
+
+  /** 应用新配置/新凭据的最可靠方式：重启子进程，让启动环境重新注入。 */
+  async restart(port = 0): Promise<HarnessStatus> {
+    await this.stop();
+    return this.launch(port);
+  }
+
+  get running(): boolean {
+    return this.session !== undefined;
+  }
+
+  get startedAt(): string | undefined {
+    return this.session?.startedAt;
+  }
+
+  /** 本次启动以来解析出的 QQ 插件事件（时间序，供状态机判定）。 */
+  get pluginEvents(): { at: string; event: QqOutputEvent }[] {
+    return [...this.qqEvents];
+  }
+
+  /** 输出尾部（已去 ANSI），用于在界面上展示"为什么是这个状态"。 */
+  outputTail(count = 20): string[] {
+    return this.output.slice(-count);
+  }
+
+  /** 插件打印的 ASCII 二维码（供界面直接展示，不必只依赖浏览器）。 */
+  qrArt(): string[] {
+    return collectQrArt(this.output);
+  }
+
+  /** Keep only the QQ-relevant surface: bind links are short-lived and never persisted. */
+  private resetOutput(): void {
+    this.output.length = 0;
+    this.qqEvents.length = 0;
+    this.partial = '';
+  }
+
+  private ingest(chunk: string): void {
+    this.partial += chunk;
+    const parts = this.partial.split(/\r?\n/);
+    this.partial = parts.pop() ?? '';
+    for (const line of parts) this.pushLine(line);
+    if (this.partial.length > 4000) {
+      // 没有换行的超长输出（例如二维码块）也不能无限增长。
+      this.pushLine(this.partial);
+      this.partial = '';
+    }
+  }
+
+  private pushLine(raw: string): void {
+    const line = stripAnsi(raw).trimEnd();
+    if (!line.trim()) return;
+    this.output.push(line);
+    if (this.output.length > 300) this.output.shift();
+    const event = parseQqLine(line);
+    if (event) {
+      this.qqEvents.push({ at: new Date().toISOString(), event });
+      if (this.qqEvents.length > 100) this.qqEvents.shift();
+      // 持久化一条脱敏证据：QQ 连接信号只在子进程输出里，不落日志就无法事后复核。
+      void this.container.logger.info('qq', describeEvent(event));
+    }
   }
 
   async probe(): Promise<HealthReport | undefined> {
@@ -111,6 +198,24 @@ export class HarnessService {
 
   installQqPlugin(): Promise<void> {
     return this.getCli().addPlugin(BASELINE.dsh.profile, `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`);
+  }
+
+  /** 给其它模块（个人 QQ 适配插件）用：只走官方 `plugin add/remove`，不改 profile 文件。 */
+  installPlugin(spec: string): Promise<void> {
+    return this.getCli().addPlugin(BASELINE.dsh.profile, spec);
+  }
+
+  removePlugin(name: string): Promise<void> {
+    return this.getCli().removePlugin(BASELINE.dsh.profile, name);
+  }
+
+  /**
+   * Harness Web 的会话凭据。个人 QQ 探测需要带会话 cookie 访问插件路由
+   * （`/dsh-qq-bridge/state` 在无 cookie 时返回 authentication_required）。
+   */
+  auth(): { baseUrl: string; token: string } | undefined {
+    if (!this.session) return undefined;
+    return { baseUrl: this.session.url.split('?')[0]!, token: this.session.token };
   }
 
   get bindUrl(): string | undefined {

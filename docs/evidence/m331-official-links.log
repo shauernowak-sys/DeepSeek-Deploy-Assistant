@@ -1,0 +1,18 @@
+﻿# M3.3.1 官方下载链接核实（2026-11-03T21:55:24.4149769+08:00）
+
+说明：本文件记录"官方来源是否可访问"的即时核实结果。
+GitHub REST API 在本次核查时对当前出口 IP 触发未认证限流（60 次/小时），
+因此 API 层证据沿用同日更早的实测（见 m33-real-package.log），这里补充 URL 可达性。
+
+https://github.com/SnowLuma/SnowLuma/releases/tag/v2.4.0
+  HTTP/1.1 200 Connection established
+  
+https://github.com/SnowLuma/SnowLuma/releases/download/v2.4.0/SnowLuma-v2.4.0-win-x64.zip
+  HTTP/1.1 200 Connection established
+  Location: https://release-assets.githubusercontent.com/github-production-release-asset/1001388322/9af4e79f-5282-49be-9b2a-26dcaa18a7f2?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-03T14%3A47%3A45Z&rscd=attachment%3B+filename%3DSnowLuma-v2.4.0-win-x64.zip&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-11-03T13%3A47%3A37Z&ske=2026-11-03T14%3A47%3A45Z&sks=b&skv=2018-11-09&sig=A%2FtgRiv8bFxY76VYqo2c0kid878dU6Jmm%2FTYzI2uDso%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5MzcxNTkyNSwibmJmIjoxNzkzNzE0MTI1LCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.ezpEMRdIGPiOkE6OuZje5EPKMjlAPc1iMlgwTPth8YI&response-content-disposition=attachment%3B%20filename%3DSnowLuma-v2.4.0-win-x64.zip&response-content-type=application%2Foctet-stream
+https://raw.githubusercontent.com/SnowLuma/SnowLuma/main/EULA.md
+  HTTP/1.1 200 Connection established
+  
+https://raw.githubusercontent.com/SnowLuma/SnowLuma/main/LICENSE
+  HTTP/1.1 200 Connection established
+  

@@ -8,6 +8,9 @@ import { EnvService } from './services/env-service';
 import { HarnessService } from './services/harness-service';
 import { Secrets } from './security/secrets';
 import { ApiService } from './services/api-service';
+import { QqService } from './services/qq-service';
+import { PersonalQqService } from './services/personal-qq-service';
+import { SnowLumaDeploymentService } from './services/snowluma-deployment-service';
 import { attachEventForwarding, registerIpc } from './ipc/register';
 
 const gotLock = app.requestSingleInstanceLock();
@@ -61,10 +64,34 @@ if (!gotLock) {
     const env = new EnvService(container);
     const secrets = new Secrets(container.paths.root);
     const api = new ApiService(container, secrets);
-    const harness = new HarnessService(container, () => api.launchEnv());
+    let qq: QqService | undefined;
+    // One merged environment for the child process: model key (M3.1) + QQ bot credentials (M3.2).
+    const harness = new HarnessService(container, async () => ({
+      ...(await api.launchEnv()),
+      ...(qq ? await qq.launchEnv() : {}),
+    }));
+    qq = new QqService(container, secrets, harness);
+    const personal = new PersonalQqService(container, harness);
+    const deployment = new SnowLumaDeploymentService(container, harness, personal, {
+      onUpdate: (snapshot) => {
+        if (!win.isDestroyed()) win.webContents.send('personal:deploy-event', snapshot);
+      },
+    });
     const diagnostics = new DiagnosticsService(container, env, harness, () => deploy.summary());
 
-    registerIpc({ container, deploy, env, harness, diagnostics, secrets, api, broadcast });
+    registerIpc({
+      container,
+      deploy,
+      env,
+      harness,
+      diagnostics,
+      secrets,
+      api,
+      qq,
+      personal,
+      deployment,
+      broadcast,
+    });
 
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
     if (rendererUrl) {
@@ -74,6 +101,8 @@ if (!gotLock) {
     }
 
     app.on('before-quit', async () => {
+      // 明确的生命周期策略：退出时停止我们启动的 SnowLuma 与 Harness，但不删除任何文件。
+      await deployment.dispose().catch(() => undefined);
       await harness.stop().catch(() => undefined);
     });
   });

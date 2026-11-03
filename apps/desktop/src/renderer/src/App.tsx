@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { PersonalQqPanel } from './components/PersonalQqPanel';
+
 interface StepState {
   id: string;
   title: string;
@@ -63,6 +65,7 @@ interface Bootstrap {
   apiTemplate: ApiProviderView;
   apiModels: { id: string; name: string; contextWindow: number }[];
   apiStatus: ApiStatusView;
+  qqSettings: QqSettingsPayloadView;
 }
 
 /** Mirrors `ApiProviderConfig` in the main process (already validated there). */
@@ -123,6 +126,87 @@ interface DiagPreview {
   warning: string;
 }
 
+type QqPhaseView =
+  | 'not-deployed'
+  | 'not-installed'
+  | 'version-mismatch'
+  | 'installed'
+  | 'unbound'
+  | 'binding'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'failed';
+
+interface QqStatusView {
+  phase: QqPhaseView;
+  message: string;
+  nextStep: string;
+  harnessInstalled: boolean;
+  harnessRunning: boolean;
+  pluginInstalled: boolean;
+  pluginVersion?: string;
+  expectedVersion: string;
+  credentialSource: 'none' | 'dpapi' | 'profile';
+  appId?: string;
+  bindUrl?: string;
+  bindQr?: string[];
+  bindingStartedAt?: string;
+  bindingTimeoutMs?: number;
+  bindingAttempts?: number;
+  evidence: { at: string; source: string; line: string }[];
+  checkedAt: string;
+}
+
+interface QqSettingsView {
+  requireMention: boolean;
+  groupPrompt?: string;
+  directPrompt?: string;
+  streaming: boolean;
+  textChunkLimit: number;
+  historyLimit: number;
+  access: {
+    c2cMode: 'open' | 'allowlist' | 'disabled';
+    c2cAllow: string[];
+    groupMode: 'open' | 'allowlist' | 'disabled';
+    groupAllow: string[];
+  };
+  mediaEnabled: boolean;
+  sendFileRestrictPaths: boolean;
+}
+
+interface QqSettingsPayloadView {
+  settings: QqSettingsView;
+  mode: 'env' | 'qr';
+  credentialSource: 'none' | 'dpapi' | 'profile';
+  appId?: string;
+  appSecretMask?: string;
+  plaintextInProfile: boolean;
+  bindingMode: boolean;
+  outputTail: string[];
+}
+
+interface QqSaveView {
+  ok: boolean;
+  message: string;
+  problems: string[];
+  restarted?: boolean;
+  status?: QqStatusView;
+}
+
+const QQ_PHASE_LABEL: Record<QqPhaseView, { text: string; cls: string }> = {
+  'not-deployed': { text: '未部署', cls: 'bad' },
+  'not-installed': { text: '插件未安装', cls: 'bad' },
+  'version-mismatch': { text: '版本不匹配', cls: 'bad' },
+  installed: { text: '已安装（未运行）', cls: 'warn' },
+  unbound: { text: '未授权', cls: 'warn' },
+  binding: { text: '等待扫码授权', cls: 'warn' },
+  connecting: { text: '连接中', cls: 'warn' },
+  connected: { text: '已连接', cls: 'ok' },
+  reconnecting: { text: '重连中', cls: 'warn' },
+  failed: { text: '连接失败', cls: 'bad' },
+};
+
 type Api = {
   bootstrap: () => Promise<Bootstrap>;
   scanEnv: () => Promise<EnvReport>;
@@ -146,7 +230,19 @@ type Api = {
   apiStatus: () => Promise<ApiStatusView>;
   apiTest: (payload: { config: ApiProviderView; apiKey?: string }) => Promise<ConnectionView>;
   apiSave: (payload: { config: ApiProviderView; apiKey?: string }) => Promise<SaveView>;
-  apiDelete: () => Promise<ApiStatusView>;  openLogs: () => Promise<{ path: string }>;
+  apiDelete: () => Promise<ApiStatusView>;
+  qqStatus: (refresh?: boolean) => Promise<QqStatusView>;
+  qqSettings: () => Promise<QqSettingsPayloadView>;
+  qqOutput: () => Promise<string[]>;
+  qqSaveCredentials: (payload: { appId: string; appSecret: string }) => Promise<QqSaveView>;
+  qqDeleteCredentials: () => Promise<QqSaveView>;
+  qqSaveSettings: (payload: { settings: QqSettingsView; mode: 'env' | 'qr' }) => Promise<QqSaveView>;
+  qqStartBinding: (regenerate?: boolean) => Promise<QqSaveView>;
+  qqCancelBinding: () => Promise<QqSaveView>;
+  qqMigrate: (confirm: boolean) => Promise<QqSaveView>;
+  qqRepairPlugin: () => Promise<QqSaveView>;
+  qqOpenBind: () => Promise<{ ok: boolean; reason?: string }>;
+  openLogs: () => Promise<{ path: string }>;
   diagPreview: () => Promise<DiagPreview>;
   diagExport: (confirmed: boolean) => Promise<{ cancelled: boolean; zipPath?: string; bytes?: number; entries?: number }>;
   onTaskEvent: (handler: (event: { stepId: string; status: string; progress: number; message?: string }) => void) => () => void;
@@ -218,6 +314,7 @@ export function App(): JSX.Element {
   const api = window.dda;
   const [boot, setBoot] = useState<Bootstrap>();
   const [env, setEnv] = useState<EnvReport>();
+  const [qqTab, setQqTab] = useState<'official' | 'personal'>('official');
   const [task, setTask] = useState<TaskSummary>();
   const [info, setInfo] = useState<HarnessInfo>();
   const [progress, setProgress] = useState(0);
@@ -240,6 +337,14 @@ export function App(): JSX.Element {
   const [cleanupOnCancel, setCleanupOnCancel] = useState(true);
   const [diagPreview, setDiagPreview] = useState<DiagPreview>();
   const [diagResult, setDiagResult] = useState<string>();
+  const [qqStatus, setQqStatus] = useState<QqStatusView>();
+  const [qqForm, setQqForm] = useState<QqSettingsView>();
+  const [qqMeta, setQqMeta] = useState<QqSettingsPayloadView>();
+  const [qqAppId, setQqAppId] = useState('');
+  const [qqAppSecret, setQqAppSecret] = useState('');
+  const [qqMessage, setQqMessage] = useState<string>();
+  const [qqTail, setQqTail] = useState<string[]>([]);
+  const [confirmQqUnbind, setConfirmQqUnbind] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -250,6 +355,10 @@ export function App(): JSX.Element {
         setKeyMask(b.apiStatus.keyMask);
         setApiStatusView(b.apiStatus);
         setApiForm(b.apiStatus.config ?? b.apiTemplate);
+        setQqMeta(b.qqSettings);
+        setQqForm(b.qqSettings.settings);
+        setQqAppId(b.qqSettings.appId ?? '');
+        setQqStatus(await api.qqStatus());
         const i = await api.harnessInfo();
         setInfo(i);
         setPlugins(i.plugins);
@@ -276,6 +385,40 @@ export function App(): JSX.Element {
     setPlugins(i.plugins);
     if (i.task) mergeTask(i.task);
   }, [api, mergeTask]);
+
+  /** QQ 状态依赖运行时证据，启动后按 4 秒轮询（状态本身走缓存，不会每次执行 plugin list）。 */
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const [status, tail] = await Promise.all([api.qqStatus(), api.qqOutput()]);
+        if (!cancelled) {
+          setQqStatus(status);
+          setQqTail(tail);
+        }
+      } catch {
+        /* 轮询失败不打断界面 */
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [api]);
+
+  const refreshQq = useCallback(
+    async (refreshPlugins = false) => {
+      const [status, meta] = await Promise.all([api.qqStatus(refreshPlugins), api.qqSettings()]);
+      setQqStatus(status);
+      setQqMeta(meta);
+      setQqForm(meta.settings);
+      if (meta.appId) setQqAppId(meta.appId);
+      setQqTail(await api.qqOutput());
+    },
+    [api],
+  );
 
   const run = useCallback(async (label: string, fn: () => Promise<void>) => {
     setBusy(label);
@@ -361,6 +504,73 @@ export function App(): JSX.Element {
     run('launch', async () => {
       const s = await api.launchHarness(0);
       setHealth(s.health);
+      await refreshInfo();
+      await refreshQq();
+    });
+
+  const qqSaveCredentials = () =>
+    run('qq-save', async () => {
+      setQqMessage(undefined);
+      const result = await api.qqSaveCredentials({ appId: qqAppId, appSecret: qqAppSecret });
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      if (result.ok) {
+        setQqAppSecret('');
+        setConfirmQqUnbind(false);
+      }
+      await refreshQq(true);
+      await refreshInfo();
+    });
+
+  const qqDeleteCredentials = () =>
+    run('qq-unbind', async () => {
+      const result = await api.qqDeleteCredentials();
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      setConfirmQqUnbind(false);
+      setQqAppSecret('');
+      await refreshQq(true);
+      await refreshInfo();
+    });
+
+  const qqSaveSettings = () =>
+    run('qq-settings', async () => {
+      if (!qqForm) return;
+      setQqMessage(undefined);
+      const result = await api.qqSaveSettings({ settings: qqForm, mode: qqMeta?.credentialSource === 'profile' ? 'qr' : 'env' });
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      await refreshQq();
+      await refreshInfo();
+    });
+
+  const qqStartBinding = (regenerate = false) =>
+    run(regenerate ? 'qq-regen' : 'qq-bind', async () => {
+      setQqMessage(undefined);
+      const result = await api.qqStartBinding(regenerate);
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      await refreshQq();
+      await refreshInfo();
+    });
+
+  const qqCancelBinding = () =>
+    run('qq-cancel', async () => {
+      const result = await api.qqCancelBinding();
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      await refreshQq(true);
+      await refreshInfo();
+    });
+
+  const qqMigrate = () =>
+    run('qq-migrate', async () => {
+      const result = await api.qqMigrate(true);
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      await refreshQq(true);
+    });
+
+  const qqRepair = () =>
+    run('qq-repair', async () => {
+      setQqMessage(undefined);
+      const result = await api.qqRepairPlugin();
+      setQqMessage([result.message, ...result.problems].filter(Boolean).join('；'));
+      await refreshQq(true);
       await refreshInfo();
     });
 
@@ -597,55 +807,321 @@ export function App(): JSX.Element {
 
       <div className="grid">
         <section className="card">
-          <h2>4. 插件</h2>
+          <h2>4. QQ 接入</h2>
           <div className="row">
-            <button
-              onClick={() =>
-                run('list', async () => {
-                  setPlugins(await api.listPlugins());
-                })
-              }
-              disabled={Boolean(busy)}
-            >
-              刷新列表
+            <button className={qqTab === 'official' ? 'primary' : ''} onClick={() => setQqTab('official')}>
+              官方 QQ Bot
             </button>
-            <button
-              className="primary"
-              onClick={() =>
-                run('install', async () => {
-                  setPlugins(await api.installQqPlugin());
-                })
-              }
-              disabled={Boolean(busy)}
-            >
-              安装 QQ 插件
+            <button className={qqTab === 'personal' ? 'primary' : ''} onClick={() => setQqTab('personal')}>
+              个人 QQ（SnowLuma）
             </button>
           </div>
-          {plugins.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>插件</th>
-                  <th>版本</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plugins.map((p) => (
-                  <tr key={p.name}>
-                    <td>{p.name}</td>
-                    <td>{p.version ?? '—'}</td>
-                    <td>{health?.level === 'usable' ? '已加载（连接未验证）' : '已安装'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty">未读取到插件。</div>
-          )}
+          {qqTab === 'personal' && <PersonalQqPanel />}
+          {qqTab === 'official' && (
+            <>
           <p className="muted">
-            QQ 插件的运行时依赖 qqbot-connector 为 UNLICENSED：仅在线安装，不打包、不镜像。真实收发未验证（QQ-GATE-01）。
+            只使用腾讯官方插件与官方授权（QQ Bot API v2）。本软件不实现 QQ 协议、不代替你登录，也不会把凭据上传到任何第三方。
           </p>
+
+          <p>
+            <span className={`badge ${qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].cls : ''}`}>
+              {qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].text : '读取中…'}
+            </span>{' '}
+            <span className="muted">{qqStatus?.message}</span>
+          </p>
+          {qqStatus?.nextStep && <p className="muted">下一步：{qqStatus.nextStep}</p>}
+          <p className="muted">
+            插件：
+            {qqStatus ? (qqStatus.pluginInstalled ? `已安装 ${qqStatus.pluginVersion ?? ''}` : '未安装') : '读取中…'} ·
+            基线 {qqStatus?.expectedVersion ?? boot?.baseline.qqbot.version ?? '—'} · 凭据来源：
+            {qqStatus?.credentialSource === 'dpapi'
+              ? '本机加密存储'
+              : qqStatus?.credentialSource === 'profile'
+                ? '插件写入 profile（明文）'
+                : qqStatus
+                  ? '无'
+                  : '读取中…'}
+            {(qqStatus?.appId || boot?.qqSettings.appId) ? ` · AppID ${qqStatus?.appId ?? boot?.qqSettings.appId}` : ''}
+          </p>
+
+          <div className="row">
+            <button onClick={() => run('qq-refresh', async () => void (await refreshQq(true)))} disabled={Boolean(busy)}>
+              {busy === 'qq-refresh' ? '刷新中…' : '刷新状态'}
+            </button>
+            <button className="primary" onClick={qqRepair} disabled={Boolean(busy)}>
+              {busy === 'qq-repair' ? '安装中…' : '安装 / 修复 QQ 插件'}
+            </button>
+            <button
+              onClick={() => qqStartBinding(false)}
+              disabled={Boolean(busy) || !qqStatus?.harnessInstalled || Boolean(qqMeta?.bindingMode)}
+            >
+              {busy === 'qq-bind' ? '正在申请二维码…' : '用官方扫码绑定'}
+            </button>
+            {qqMeta?.bindingMode && (
+              <button onClick={qqCancelBinding} disabled={Boolean(busy)}>
+                {busy === 'qq-cancel' ? '取消中…' : '取消扫码（用已保存的 AppID）'}
+              </button>
+            )}
+          </div>
+
+          {(qqStatus?.phase === 'binding' || (qqStatus?.phase === 'failed' && qqMeta?.bindingMode)) && (
+            <div className="banner warn">
+              <b>官方扫码授权</b>
+              <p className="muted">{qqStatus.message}</p>
+              {qqStatus.bindQr?.length ? (
+                <pre className="qr">{qqStatus.bindQr.join('\n')}</pre>
+              ) : (
+                <p className="muted">二维码正在生成（通常 1–5 秒）；浏览器也会自动打开官方授权页。</p>
+              )}
+              {qqStatus.bindUrl && (
+                <p className="muted" style={{ wordBreak: 'break-all' }}>
+                  官方链接：{qqStatus.bindUrl}
+                </p>
+              )}
+              <div className="row">
+                {qqStatus.bindUrl && (
+                  <button
+                    onClick={() =>
+                      run('qq-open', async () => {
+                        const r = await api.qqOpenBind();
+                        if (!r.ok) setQqMessage(r.reason ?? '打开失败');
+                      })
+                    }
+                    disabled={Boolean(busy)}
+                  >
+                    用浏览器打开官方授权页
+                  </button>
+                )}
+                <button onClick={() => qqStartBinding(true)} disabled={Boolean(busy)}>
+                  {busy === 'qq-regen' ? '重新申请中…' : '重新生成二维码'}
+                </button>
+                <button onClick={qqCancelBinding} disabled={Boolean(busy)}>
+                  取消扫码
+                </button>
+                {qqStatus.bindingAttempts ? (
+                  <span className="muted">已尝试 {qqStatus.bindingAttempts} 次</span>
+                ) : null}
+              </div>
+              {qqStatus.phase === 'failed' && <p className="muted">{qqStatus.nextStep}</p>}
+              <p className="muted">
+                扫码成功后，插件会把凭据写进它自己的配置文件（明文）；届时这里会出现「迁移到加密存储」按钮把它搬到 DPAPI。
+                你的 AppID/AppSecret 不会被删除，点"取消扫码"即可回到原路径。
+              </p>
+            </div>
+          )}
+
+          <h3>授权（AppID / AppSecret）</h3>
+          <div className="row">
+            <input
+              placeholder="AppID（QQ 开放平台 → 机器人 → 开发设置）"
+              value={qqAppId}
+              onChange={(e) => setQqAppId(e.target.value)}
+              size={22}
+            />
+            <input
+              placeholder={qqMeta?.appSecretMask ? `已保存（${qqMeta.appSecretMask}），留空则不变` : 'AppSecret'}
+              value={qqAppSecret}
+              type="password"
+              onChange={(e) => setQqAppSecret(e.target.value)}
+              size={24}
+            />
+            <button className="primary" onClick={qqSaveCredentials} disabled={Boolean(busy) || !qqAppId.trim()}>
+              {busy === 'qq-save' ? '保存中…' : '保存并应用'}
+            </button>
+            {!confirmQqUnbind ? (
+              <button onClick={() => setConfirmQqUnbind(true)} disabled={Boolean(busy) || qqStatus?.credentialSource === 'none'}>
+                解绑…
+              </button>
+            ) : (
+              <button className="danger" onClick={qqDeleteCredentials} disabled={Boolean(busy)}>
+                确认解绑
+              </button>
+            )}
+          </div>
+          <p className="muted">
+            凭据只以 Windows DPAPI 密文保存在本机，启动 Harness 时临时注入环境变量（<code>QQBOT_APPID</code>/
+            <code>QQBOT_SECRET</code>），不写入任何明文配置文件，也不进日志与诊断包。
+          </p>
+          {qqMeta?.plaintextInProfile && (
+            <div className="banner warn">
+              <b>注意：</b>官方扫码流程成功后，插件会把 AppID/AppSecret <b>明文写入它自己的 profile 配置</b>
+              （<code>{boot?.dataDir}\dsh-home\profiles\web\cordis.patch.yml</code>）。这是插件自身行为，不是本软件写入的。
+              <div className="row">
+                <button onClick={qqMigrate} disabled={Boolean(busy)}>
+                  {busy === 'qq-migrate' ? '迁移中…' : '迁移到加密存储（清掉明文）'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {qqForm && (
+            <>
+              <h3>消息与访问控制（插件真实支持的字段）</h3>
+              <div className="row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={qqForm.requireMention}
+                    onChange={(e) => setQqForm({ ...qqForm, requireMention: e.target.checked })}
+                  />{' '}
+                  群聊需要 @机器人
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={qqForm.streaming}
+                    onChange={(e) => setQqForm({ ...qqForm, streaming: e.target.checked })}
+                  />{' '}
+                  私聊流式回复（群聊始终不流式）
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={qqForm.mediaEnabled}
+                    onChange={(e) => setQqForm({ ...qqForm, mediaEnabled: e.target.checked })}
+                  />{' '}
+                  接收图片/文件
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={qqForm.sendFileRestrictPaths}
+                    onChange={(e) => setQqForm({ ...qqForm, sendFileRestrictPaths: e.target.checked })}
+                  />{' '}
+                  限制可发送文件路径
+                </label>
+              </div>
+              <div className="row">
+                <span className="muted">单条消息上限</span>
+                <input
+                  type="number"
+                  min={100}
+                  max={5000}
+                  value={qqForm.textChunkLimit}
+                  onChange={(e) => setQqForm({ ...qqForm, textChunkLimit: Number(e.target.value) })}
+                />
+                <span className="muted">群历史条数</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={qqForm.historyLimit}
+                  onChange={(e) => setQqForm({ ...qqForm, historyLimit: Number(e.target.value) })}
+                />
+                <span className="muted">私聊</span>
+                <select
+                  value={qqForm.access.c2cMode}
+                  onChange={(e) =>
+                    setQqForm({
+                      ...qqForm,
+                      access: { ...qqForm.access, c2cMode: e.target.value as QqSettingsView['access']['c2cMode'] },
+                    })
+                  }
+                >
+                  <option value="open">所有人</option>
+                  <option value="allowlist">仅白名单</option>
+                  <option value="disabled">禁用</option>
+                </select>
+                <span className="muted">群聊</span>
+                <select
+                  value={qqForm.access.groupMode}
+                  onChange={(e) =>
+                    setQqForm({
+                      ...qqForm,
+                      access: { ...qqForm.access, groupMode: e.target.value as QqSettingsView['access']['groupMode'] },
+                    })
+                  }
+                >
+                  <option value="open">所有群</option>
+                  <option value="allowlist">仅白名单群</option>
+                  <option value="disabled">禁用</option>
+                </select>
+              </div>
+              {qqForm.access.c2cMode === 'allowlist' && (
+                <p className="muted">
+                  私聊白名单（OpenID，逗号分隔）：
+                  <input
+                    size={60}
+                    value={qqForm.access.c2cAllow.join(',')}
+                    onChange={(e) =>
+                      setQqForm({
+                        ...qqForm,
+                        access: { ...qqForm.access, c2cAllow: e.target.value.split(',').map((v) => v.trim()) },
+                      })
+                    }
+                  />
+                </p>
+              )}
+              {qqForm.access.groupMode === 'allowlist' && (
+                <p className="muted">
+                  群白名单（群 OpenID，逗号分隔）：
+                  <input
+                    size={60}
+                    value={qqForm.access.groupAllow.join(',')}
+                    onChange={(e) =>
+                      setQqForm({
+                        ...qqForm,
+                        access: { ...qqForm.access, groupAllow: e.target.value.split(',').map((v) => v.trim()) },
+                      })
+                    }
+                  />
+                </p>
+              )}
+              <p className="muted">
+                群聊额外提示词：
+                <input
+                  size={60}
+                  value={qqForm.groupPrompt ?? ''}
+                  onChange={(e) => setQqForm({ ...qqForm, groupPrompt: e.target.value })}
+                />
+              </p>
+              <p className="muted">
+                私聊额外提示词：
+                <input
+                  size={60}
+                  value={qqForm.directPrompt ?? ''}
+                  onChange={(e) => setQqForm({ ...qqForm, directPrompt: e.target.value })}
+                />
+              </p>
+              <div className="row">
+                <button className="primary" onClick={qqSaveSettings} disabled={Boolean(busy)}>
+                  {busy === 'qq-settings' ? '保存中…' : '保存消息配置'}
+                </button>
+                <span className="muted">
+                  写入 profile 的受管块（<code>im-qqbot</code>），并回读 Harness 组合配置确认生效；失败自动回滚。
+                </span>
+              </div>
+            </>
+          )}
+
+          {qqMessage && <p className="muted">{qqMessage}</p>}
+
+          {qqStatus?.evidence?.length ? (
+            <details>
+              <summary className="muted">状态依据（{qqStatus.evidence.length} 条运行时证据）</summary>
+              <ul className="muted">
+                {qqStatus.evidence.map((item, index) => (
+                  <li key={`${item.at}-${index}`}>
+                    {new Date(item.at).toLocaleTimeString()} · {item.source} · {item.line}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+
+          {qqTail.length > 0 && (
+            <details>
+              <summary className="muted">插件输出（最近 {qqTail.length} 行，已去控制字符）</summary>
+              <pre className="evidence">{qqTail.join('\n')}</pre>
+            </details>
+          )}
+
+          <p className="muted">
+            插件运行时依赖 qqbot-connector 为 UNLICENSED：仅在线安装，不打包、不镜像。真实 QQ 收发（QQ-GATE-01）尚未验收，
+            未验证项一律不标记为通过。
+          </p>
+            </>
+          )}
         </section>
 
         <section className="card">

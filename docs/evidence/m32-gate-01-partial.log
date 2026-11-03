@@ -1,0 +1,87 @@
+# M3.2 QQ-GATE-01 部分真实验证证据（脱敏）
+日期：2026-11-03 · 环境：Windows 11 Pro 10.0.26200（非管理员）· 产物：release/win-unpacked（0.2.0）
+脱敏规则：用户目录 → <user>；task_id / token / sk-* → <redacted>；AppID 仅显示掩码；**未读取任何会话正文**。
+
+## 一、真实验证：授权方式 A（AppID/AppSecret）+ 私聊对话
+来源：产品自身日志（%LOCALAPPDATA%\DeepSeekDeployAssistant\logs\app-2026-11-03.log，UTC 时间）
+2026-11-03T09:53:04.021Z INFO [harness] launched pid=10856 url=http://127.0.0.1:49697/ health=usable (鉴权通过，已返回应用外壳)
+2026-11-03T09:53:04.022Z INFO [qq] binding started (official QR flow), restarted=true
+2026-11-03T10:50:58.958Z INFO [harness] launched pid=3120 url=http://127.0.0.1:56519/ health=usable (鉴权通过，已返回应用外壳)
+2026-11-03T10:50:58.958Z INFO [qq] binding started (official QR flow), restarted=true
+2026-11-03T11:05:36.873Z INFO [harness] stopped
+2026-11-03T11:05:39.399Z INFO [harness] launched pid=18108 url=http://127.0.0.1:56284/ health=usable (鉴权通过，已返回应用外壳)
+2026-11-03T11:05:39.400Z INFO [qq] binding started (official QR flow), restarted=true
+2026-11-03T11:07:22.930Z INFO [harness] stopped
+2026-11-03T11:07:25.555Z INFO [harness] launched pid=15396 url=http://127.0.0.1:60370/ health=usable (鉴权通过，已返回应用外壳)
+2026-11-03T11:07:25.555Z INFO [qq] credentials saved (dpapi), restarted=true
+> 说明：17:53 / 18:50 / 19:05 三次 `binding started (official QR flow)` 是用户点击"用官方扫码绑定"的记录
+> （当时界面只给了一句提示、二维码在折叠区里不可见 → 缺陷 K-M3.2-13，本轮已修复）。
+> 19:07:25 `credentials saved (dpapi), restarted=true` 之后用户完成真实私聊对话。
+
+## 二、真实会话产物（只有元数据，未读取内容）
+来源：%LOCALAPPDATA%\DeepSeekDeployAssistant\dsh-home\sessions
+
+- 目录：`--C-Users-<user>-.dsh-qqbot-workspace--`（QQ 插件自己的工作目录会话，**不是** CLI 会话）
+- 文件：`session-<uuid>.session.v4.jsonl.zstd`，最后写入 2026-11-03 19:18:08，大小 48,924 B
+- 判断依据：该会话目录只在 QQ 插件收到真实消息时才会创建；文件在 19:07–19:18 持续增长，与用户口述的私聊对话时间一致
+- **未做的事**：没有解压或读取会话正文（隐私）
+
+## 三、两个受管块共存（配置层面核对）
+### 1) profile patch（真实文件）
+```
+# >>> dda:managed:begin  (DeepSeek Deploy Assistant 写入，请勿手工修改)
+- id: llm-deepseek
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    baseURL: https://api.deepseek.com/anthropic
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1
+
+# <<< dda:managed:end
+
+# >>> dda:managed:qq:begin  (DeepSeek Deploy Assistant 写入，请勿手工修改)
+- id: im-qqbot
+  config:
+    appId: __FROM_ENV__
+    appSecret: __FROM_ENV__
+    requireMention: true
+    streaming: true
+    textChunkLimit: 4500
+    historyLimit: 10
+    access:
+      c2cMode: open
+      c2cAllow: []
+      groupMode: open
+      groupAllow: []
+    media:
+      enabled: true
+    sendFile:
+      restrictPaths: true
+# <<< dda:managed:qq:end
+```
+### 2) Harness 组合结果（`dsh --profile web --dump-config` 节选）
+```
+    provider: deepseek-official
+    model: deepseek-flash
+    apiKeyEnv: DEEPSEEK_API_KEY
+    apiKeyEnv: DEEPSEEK_API_KEY
+- id: im-qqbot
+    appId: __FROM_ENV__
+    appSecret: __FROM_ENV__
+    requireMention: true```
+
+结论：
+- M3.1 的 `llm-deepseek` / `agent-default-model` 仍在且是当前默认模型（`provider: deepseek-official` + `model: deepseek-flash` + `apiKeyEnv: DEEPSEEK_API_KEY`）；
+- M3.2 的 `im-qqbot` 条目独立存在，凭据只有 `__FROM_ENV__` 占位符；
+- `secrets.bin` 的键为 `api.credential, qq.appId, qq.appSecret`（全部为 DPAPI 密文，磁盘无明文）。
+
+## 四、本轮"未"验证（不得记通过）
+- #2 群内 @ 回复：用户只测了私聊
+- #4 图片消息、#5 断网自动恢复、#6 重启后免扫码：均未执行
+- 扫码（方式 B）：修复后的新构建尚未实跑（需要在关闭当前运行实例后才能构建发布目录）

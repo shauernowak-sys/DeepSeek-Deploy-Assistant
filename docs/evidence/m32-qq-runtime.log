@@ -1,0 +1,52 @@
+# M3.2 QQ 运行时证据（打包应用 + 真实已部署实例）
+日期：2026-11-03 · 产物：release/win-unpacked（FileVersion 0.2.0）
+说明：驱动方式为 CDP 调用与界面按钮相同的 IPC；二维码/链接来自真实插件 stdout（已脱敏）。
+
+## 一、状态机：已安装 → 等待扫码（真实插件输出）
+SECTION4 {
+  "found": true,
+  "heading": "4. QQ 机器人（官方插件）",
+  "text": "4. QQ 机器人（官方插件）\n只使用腾讯官方插件与官方授权（QQ Bot API v2）。本软件不实现 QQ 协议、不代替你登录，也不会把凭据上传到任何第三方。\n已安装（未运行） 插件已安装，Harness 未运行\n下一步：点第 2 节\"启动 Harness\"后这里会显示 QQ 连接状态。\n插件：已安装 0.5.5 · 基线 0.5.5 · 凭据来源：无\n刷新状态\n安装 / 修复 QQ 插件\n用官方扫码绑定\n授权（AppID / AppSecret）\n保存并应用\n解绑…\n凭据只以 Windows DPAPI 密文保存在本机，启动 Harness 时临时注入环境变量（QQBOT_APPID/QQBOT_SECRET），不写入任何明文配置文件，也不进日志与诊断包。\n消息与访问控制（插件真实支持的字段）\n 群聊需要 @机器人\n 私聊流式回复（群聊始终不流式）\n 接收图片/文件\n 限制可发送文件路径\n单条消息上限\n群历史条数\n私聊\n所有人\n仅白名单\n禁用\n群聊\n所有群\n仅白名单群\n禁用\n群聊额外提示词：\n私聊额外提示词：\n保存消息配置\n写入 profile 的受管块（im-qqbot），并回读 Harness 组合配置确认生效；失败自动回滚。\n状态依据（1 条运行时证据）\n插件运行时依赖 qqbot-connector 为 UNLICENSED：仅在线安装，不打包、不镜像。真实 QQ 收发（QQ-GATE-01）尚未验收， 未验证项一律不标记为通过。"
+}
+STATUS(initial) {"phase":"installed","message":"插件已安装，Harness 未运行","plugin":"0.5.5","src":"none","harness":false}
+LAUNCH {"ok":true,"health":"usable"}
+STATUS(after launch) {
+  "phase": "binding",
+  "message": "等待你在手机 QQ 上完成官方扫码授权",
+  "hasBindUrl": true,
+  "bindUrlHost": "q.qq.com",
+  "evidence": [
+    "插件 0.5.5 已安装",
+    "插件已生成绑定二维码",
+    "官方扫码链接：https://q.qq.com/qqbot/openclaw/connect.html?task_id=<redacted>&source=dsh-qqbot&_wv=2"
+  ]
+}
+OUTPUT_TAIL(redacted) [
+  "█   ▀▀ ▄█▄▀▄ ▀ ██▀ ▀  ▀ ▀▄▄█▄▀▄█▀▀ ▀ ▀█▄▄ █",
+  "██▀▀█  ▄▄█ █▀▀ ▄ █ ▀▀ ▀ ▀▄▄▀ ██▀▀ █▀ █▄▄ ██",
+  "█ ▀▀  █▄▄ ▄▄█▀▀▄▀▄█▀▄█▀  █ ▄▄ ▄  ▀▀▀▄▀▄▄▀▀█",
+  "█ █▀ ██▄▀▄ ██▀█  ▄█▀▀█ ▄█▀▄ ▄ █▀██▀ ▄ ▀▄▀██",
+  "█▄██▄▄▄▄▄▀▄█▀▀▄▄▄▄▄▄▀▄▀▄▀▄ ▄█ ▄ █ ▄▄▄ █ ▄▀█",
+  "█ ▄▄▄▄▄ █▄▄▄▀██▀ ▀█▄█▀▀▄▀███▄ ▄▀  █▄█ █▄▄██",
+  "█ █   █ █ ▄ █▄█▀ ▀▀▄ ▄█▀ █▄██▀ █▀ ▄▄▄▄▀▄█ █",
+  "█ █▄▄▄█ █ ▀▀ ▄█▀█▀███   ██▄▀▄▄▄█▀▀▄▄▀▄▀▄▀██",
+  "█▄▄▄▄▄▄▄█▄▄▄▄█▄██▄▄▄▄██▄▄▄▄▄▄█▄███▄▄▄██▄███",
+  "请使用手机 QQ 扫描上方二维码，完成机器人绑定。",
+  "二维码显示异常？点击下方链接，用浏览器打开即可完成扫码:",
+  "  https://q.qq.com/qqbot/openclaw/connect.html?task_id=<redacted>&source=dsh-qqbot&_wv=2"
+]
+STOP "ok"
+
+## 二、消息配置写入 + --dump-config 回读（verify 通过才返回 ok）
+SETTINGS(before) {"mode":"env","source":"none","textChunkLimit":4500,"requireMention":true,"plaintext":false}
+SAVE {"ok":true,"problems":[],"message":"消息配置已保存并触发 Harness 热重载"}
+SETTINGS(after) {"requireMention":false,"streaming":false,"textChunkLimit":4000,"historyLimit":7,"groupPrompt":"M3.2 验收：群里请简短回答","groupMode":"allowlist","groupAllow":["acceptance-group-openid"],"mode":"env"}
+API_STATUS {"configured":true,"model":"deepseek-flash","keyMask":"sk-****6ea5"}
+LAUNCH {"ok":true,"health":"usable"}
+STATUS {"phase":"binding","message":"等待你在手机 QQ 上完成官方扫码授权","hasBindUrl":true}
+OPEN_BIND {"ok":true}
+STOP "ok"
+
+## 三、还原为插件默认值（清除验收用测试配置）
+RESET {"ok":true,"problems":[],"message":"消息配置已保存并触发 Harness 热重载"}
+AFTER {"requireMention":true,"streaming":true,"textChunkLimit":4500,"historyLimit":10,"access":{"c2cMode":"open","c2cAllow":[],"groupMode":"open","groupAllow":[]},"mediaEnabled":true,"sendFileRestrictPaths":true}

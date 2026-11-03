@@ -15,6 +15,25 @@ import { normalizeBaseUrl, PROVIDER_ROUTE_ID, type ApiProviderConfig } from './t
 export const MANAGED_BEGIN = '# >>> dda:managed:begin  (DeepSeek Deploy Assistant 写入，请勿手工修改)';
 export const MANAGED_END = '# <<< dda:managed:end';
 
+const MANAGED_NOTE = '  (DeepSeek Deploy Assistant 写入，请勿手工修改)';
+
+export interface ManagedSection {
+  begin: string;
+  end: string;
+}
+
+/**
+ * Several features (API provider, QQ bot) write into the same patch file, so each owns a named
+ * section. An empty id keeps the original markers used by the API block.
+ */
+export function managedSection(id = ''): ManagedSection {
+  if (!id) return { begin: MANAGED_BEGIN, end: MANAGED_END };
+  return { begin: `# >>> dda:managed:${id}:begin${MANAGED_NOTE}`, end: `# <<< dda:managed:${id}:end` };
+}
+
+/** Section id owned by the QQ bot block (see packages/core/src/qq/patch.ts). */
+export const QQ_MANAGED_SECTION = 'qq';
+
 const DUMP_OPTIONS = { lineWidth: -1, noRefs: true, quotingType: '"' as const };
 
 export interface ManagedPatchEntry {
@@ -76,20 +95,32 @@ export function providerRouteOf(config: ApiProviderConfig): string {
 }
 
 export function renderManagedBlock(config: ApiProviderConfig): string {
-  const body = dumpYaml(buildManagedEntries(config), DUMP_OPTIONS).trimEnd();
-  return `${MANAGED_BEGIN}\n${body}\n${MANAGED_END}`;
+  return renderManagedSection(buildManagedEntries(config));
+}
+
+/** Same writer, but for any entry list + any section of the managed file. */
+export function renderManagedSection(entries: ManagedPatchEntry[], section = ''): string {
+  const { begin, end } = managedSection(section);
+  const body = dumpYaml(entries, DUMP_OPTIONS).trimEnd();
+  return `${begin}\n${body}\n${end}`;
 }
 
 export function hasManagedBlock(text: string): boolean {
-  return text.includes(MANAGED_BEGIN) && text.includes(MANAGED_END);
+  return hasManagedSection(text);
 }
 
-function stripManagedBlock(text: string): string {
-  const begin = text.indexOf(MANAGED_BEGIN);
-  const end = text.indexOf(MANAGED_END);
-  if (begin === -1 || end === -1 || end < begin) return text;
-  const after = text.indexOf('\n', end);
-  return text.slice(0, begin) + (after === -1 ? '' : text.slice(after + 1));
+export function hasManagedSection(text: string, section = ''): boolean {
+  const { begin, end } = managedSection(section);
+  return text.includes(begin) && text.includes(end);
+}
+
+function stripManagedSection(text: string, section = ''): string {
+  const { begin, end } = managedSection(section);
+  const beginIndex = text.indexOf(begin);
+  const endIndex = text.indexOf(end);
+  if (beginIndex === -1 || endIndex === -1 || endIndex < beginIndex) return text;
+  const after = text.indexOf('\n', endIndex);
+  return text.slice(0, beginIndex) + (after === -1 ? '' : text.slice(after + 1));
 }
 
 const EMPTY_ARRAY_LINE = /^[ \t]*\[[ \t]*\][ \t]*$/m;
@@ -99,14 +130,23 @@ const EMPTY_ARRAY_LINE = /^[ \t]*\[[ \t]*\][ \t]*$/m;
  * The input is expected to be the patch-layer YAML array (the shipped file is `[]`).
  */
 export function applyManagedBlock(existing: string, config: ApiProviderConfig): string {
-  const block = renderManagedBlock(config);
+  return applyManagedSection(existing, buildManagedEntries(config));
+}
+
+export function applyManagedSection(
+  existing: string,
+  entries: ManagedPatchEntry[],
+  section = '',
+): string {
+  const { begin, end } = managedSection(section);
+  const block = renderManagedSection(entries, section);
   const current = existing ?? '';
 
-  if (hasManagedBlock(current)) {
-    const begin = current.indexOf(MANAGED_BEGIN);
-    const end = current.indexOf(MANAGED_END);
-    const after = current.indexOf('\n', end);
-    const head = current.slice(0, begin);
+  if (hasManagedSection(current, section)) {
+    const beginIndex = current.indexOf(begin);
+    const endIndex = current.indexOf(end);
+    const after = current.indexOf('\n', endIndex);
+    const head = current.slice(0, beginIndex);
     const tail = after === -1 ? '\n' : current.slice(after + 1);
     const next = `${head}${block}\n${tail}`.replace(/\n{3,}/g, '\n\n');
     assertPatchLoadable(next);
@@ -139,7 +179,11 @@ export function applyManagedBlock(existing: string, config: ApiProviderConfig): 
 
 /** Drops our block and keeps the document a valid (possibly empty) patch array. */
 export function removeManagedBlock(existing: string): string {
-  const stripped = stripManagedBlock(existing ?? '').replace(/\s+$/, '');
+  return removeManagedSection(existing);
+}
+
+export function removeManagedSection(existing: string, section = ''): string {
+  const stripped = stripManagedSection(existing ?? '', section).replace(/\s+$/, '');
   if (stripped === '') return '[]\n';
   const parsed = loadYaml(stripped);
   if (parsed == null) {
