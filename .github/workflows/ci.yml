@@ -48,6 +48,11 @@ jobs:
       - name: Third-party notices check
         run: pnpm run notices:check
 
+      # SEC-LIC: license *full texts* shipped with the installer must match the closure, and the
+      # files referenced by resource manifests (node.json -> licenses/node-LICENSE.txt) must exist.
+      - name: License texts check
+        run: pnpm run licenses:check
+
       # D01: the built-in plugin index must pass the official format-1 validator and our own
       # assertions (registry publishTimestamp / integrity included), and must not be stale.
       - name: Build market index

@@ -1,2 +1,4 @@
 # 生成的许可清单必须保持 LF：CI 用逐字节比对校验它与依赖闭包一致。
 THIRD_PARTY_NOTICES.md text eol=lf
+# SEC-LIC：许可全文与索引同样按字节比对（生成脚本按 LF 写入）
+licenses/** text eol=lf

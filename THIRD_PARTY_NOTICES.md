@@ -39,3 +39,10 @@
 
 Node.js 与 pnpm 以官方发行包形式安装到用户私有目录，其许可（MIT）全文随官方发行包提供；
 本软件不修改其内容。Harness（`@deepseek-ai/dsh`，MIT）由官方 npm 渠道获取。
+
+三者与本产品生产依赖的**许可全文**随安装包分发在 `licenses/`（索引见 `licenses/README.md`）：
+
+- Node.js：`licenses/node-LICENSE.txt`
+- pnpm：`licenses/pnpm-LICENSE.txt`
+- Harness：`licenses/dsh-LICENSE.txt`
+- 本产品生产依赖：`licenses/npm/<name>@<version>.txt`

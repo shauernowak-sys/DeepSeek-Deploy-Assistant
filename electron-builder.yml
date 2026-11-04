@@ -16,6 +16,9 @@ extraResources:
   # D05 / SEC-LIC：第三方许可清单随安装包分发
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
+  # SEC-LIC：许可全文（licenses/README.md 是索引；node.json 的 license.textFile 按此相对路径解析）
+  - from: licenses
+    to: licenses
 
 asar: true
 

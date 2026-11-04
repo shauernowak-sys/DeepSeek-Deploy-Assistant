@@ -19,6 +19,7 @@ export * from './market/offline';
 export * from './market/market-cache';
 export * from './market/notices';
 export * from './market/index-build';
+export * from './market/licenses';
 export * from './engine/journal';
 export * from './engine/plan';
 export * from './engine/executor';

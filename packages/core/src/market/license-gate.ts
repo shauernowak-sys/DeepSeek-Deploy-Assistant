@@ -46,6 +46,8 @@ export const LICENSE_DENYLIST: readonly RegExp[] = [
  */
 const SPDX_ALIASES: Readonly<Record<string, string>> = {
   mit: 'MIT',
+  'mit license': 'MIT',
+  'mit licence': 'MIT',
   isc: 'ISC',
   'apache 2.0': 'Apache-2.0',
   'apache-2.0': 'Apache-2.0',
