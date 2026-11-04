@@ -117,7 +117,12 @@ describe.skipIf(!isWindows)('真实 Windows 环境检测（非 Mock）', () => {
     const nodeDecision = decision.components.find((c) => c.component === 'node-system')!;
     expect(nodeDecision.action).toBe('REUSE');
     expect(decision.runtime?.node.mode).toBe('system');
-    expect(decision.runtime?.node.exe).toBe(node.path);
+    const selected = node.candidates.find((candidate) => candidate.path === decision.runtime?.node.exe);
+    expect(selected).toBeDefined();
+    expect(selected?.runnable).toBe(true);
+    expect(selected?.stable).toBe(true);
+    expect(selected?.hasNpm).not.toBe(false);
+    expect(nodeDecision.target?.path).toBe(selected?.path);
     expect(decision.install).not.toContain('运行环境 Node.js');
     // 检测是只读的：数据目录仍不存在。
     expect(await fileExists(paths.root)).toBe(false);

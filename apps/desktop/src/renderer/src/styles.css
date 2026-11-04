@@ -480,3 +480,20 @@ table td.path {
   margin: 4px 0 0;
   word-break: break-all;
 }
+
+/* Product navigation and overview */
+[hidden] { display: none !important; }
+.navigation { display: flex; flex-wrap: wrap; gap: 6px; margin: 20px 0 24px; }
+.navigation button { background: transparent; border-color: transparent; font-size: 14px; }
+.navigation button.active { background: var(--panel-2); border-color: var(--border); color: #fff; }
+.home { padding: 28px; }
+h1 { font-size: 24px; }
+h2 { font-size: 18px; }
+.overview { margin: 24px 0; border-top: 1px solid var(--border); }
+.overview > div { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.overview span { color: var(--muted); }
+.prompt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.prompt p { margin: 6px 0; line-height: 1.5; }
+.error, pre.evidence, code, table td.path { font-size: 13px; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) { .app { padding: 16px; } .prompt { align-items: flex-start; flex-direction: column; } }

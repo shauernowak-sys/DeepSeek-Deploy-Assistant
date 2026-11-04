@@ -467,6 +467,7 @@ function readableError(e: unknown): string {
 
 export function App(): JSX.Element {
   const api = window.dda;
+  const [page, setPage] = useState<'home' | 'environment' | 'deploy' | 'model' | 'qq' | 'status' | 'diagnostics' | 'finish'>('home');
   const [boot, setBoot] = useState<Bootstrap>();
   const [env, setEnv] = useState<EnvReport>();
   const [decision, setDecision] = useState<DecisionView>();
@@ -663,17 +664,18 @@ export function App(): JSX.Element {
       });
       setModal(null);
       setDeployPlan(undefined);
-      await waitForSettled(taskId);
-      const inspection = await api.inspectEnv();
-      setEnv(inspection.environment);
-      setDecision(inspection.decision);
+      void waitForSettled(taskId).then(async () => {
+        const inspection = await api.inspectEnv();
+        setEnv(inspection.environment);
+        setDecision(inspection.decision);
+      }).catch((e: unknown) => setError(readableError(e)));
     });
 
   const resume = () =>
     run('resume', async () => {
       if (!task) return;
       await api.resumeDeploy(task.taskId);
-      await waitForSettled(task.taskId);
+      void waitForSettled(task.taskId).catch((e: unknown) => setError(readableError(e)));
     });
 
   const pause = () =>
@@ -846,15 +848,28 @@ export function App(): JSX.Element {
 
   return (
     <div className="app">
-      <header>
-        <h1>DeepSeek Deploy Assistant</h1>
-        <span className="badge">M2 原型 · {boot?.appVersion ?? '…'}</span>
-        <span className="badge warn">QQ-GATE-01 未通过</span>
-        <span className="muted">
-          基线：Node {boot?.baseline.node.version} · pnpm {boot?.baseline.pnpm.version} · dsh{' '}
-          {boot?.baseline.dsh.version} · profile {boot?.baseline.dsh.profile}
-        </span>
-      </header>
+      <header><h1>DeepSeek Deploy Assistant</h1><span className="muted">部署与配置助手</span></header>
+      <nav className="navigation" aria-label="主导航">{([['home','首页'],['environment','环境检查'],['deploy','部署'],['model','模型配置'],['qq','QQ 接入'],['status','运行状态'],['finish','使用指南'],['diagnostics','故障诊断']] as const).map(([id,label]) => <button key={id} className={page === id ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}>{label}</button>)}</nav>
+      {page === 'home' && <section className="card home"><h2>让 AI 助手准备就绪</h2><p>检查环境、部署助手，然后配置模型和 QQ。</p><div className="overview">
+        <div><span>运行环境</span><strong>{!env ? '检测中' : decision?.blocked ? '需要处理' : '已检测'}</strong></div>
+        <div><span>AI 助手程序</span><strong>{!info ? '未验证' : info.dshVersion ? '已安装' : '未安装'}</strong></div>
+        <div><span>模型配置</span><strong>{!apiStatusView ? '未验证' : apiStatusView.configured ? '已配置，连接待验证' : '未配置'}</strong></div>
+        <div><span>官方 QQ</span><strong>{!qqStatus ? '未验证' : QQ_PHASE_LABEL[qqStatus.phase].text}</strong></div>
+        <div><span>插件资源</span><strong>尚未提供</strong></div></div>
+        <div className="row"><button className="primary" onClick={() => setPage(task && ['paused','failed'].includes(task.status) ? 'deploy' : 'environment')}>{task && ['paused','failed'].includes(task.status) ? '继续未完成任务' : '开始部署'}</button><button onClick={() => setPage('diagnostics')}>故障诊断</button></div></section>}
+      {page === 'finish' && <section className="card"><h2>开始使用</h2><p>真实 QQ 消息仍需自行验证。</p><div className="overview">
+        <div><span>运行环境</span><strong>{!env ? '未验证' : decision?.blocked ? '需要处理' : '已检测'}</strong></div>
+        <div><span>助手程序</span><strong>{!info ? '未验证' : info.dshVersion ? '已安装' : '未安装'}</strong></div>
+        <div><span>模型</span><strong>{!apiStatusView ? '未验证' : apiStatusView.configured ? '已配置，连接待验证' : '未配置'}</strong></div>
+        <div><span>官方 QQ</span><strong>{qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].text : '未验证'}</strong></div>
+        <div><span>官方 QQ 插件</span><strong>{!qqStatus ? '未验证' : qqStatus.pluginInstalled ? '已安装，加载待验证' : '未安装'}</strong></div>
+      </div><h3>预制提示词</h3>{([
+        ['初次使用引导','我是第一次使用 AI 助手。请用简单的中文介绍你能帮我做什么，并给我三个可以直接尝试的例子。'],
+        ['AI 助手角色设置','请担任我的中文 AI 助手。先确认我的目标，再给出清晰、可执行的建议；不确定的信息请说明。'],
+        ['日常办公助手','请帮助我处理日常办公任务。先了解背景和目标，再整理重点、提出下一步行动。'],
+        ['文件处理助手','请帮助我整理文件。操作前先说明计划和涉及的文件，删除或覆盖内容前请征求我的确认。'],
+        ['故障自查助手','我遇到了问题。请先询问现象和错误信息，再从安全、可撤销的检查开始逐步排查。']
+      ] as const).map(([title,prompt]) => <div className="prompt" key={title}><div><strong>{title}</strong><p>{prompt}</p></div><button onClick={() => run('copy', async () => { await navigator.clipboard.writeText(prompt); setNotice('已复制：' + title); })}>复制</button></div>)}<div className="row"><button onClick={() => setPage('status')}>打开助手</button><button onClick={() => setPage('diagnostics')}>故障诊断</button><button onClick={() => setPage('home')}>返回首页</button></div></section>}
 
       {paused && (
         <div className="banner warn">
@@ -873,13 +888,13 @@ export function App(): JSX.Element {
         <div className="card">
           <h2>错误</h2>
           <div className="error">{error}</div>
-          <p className="muted">可点“导出诊断报告”把已脱敏的日志交给支持人员。</p>
+          <p>请检查错误信息后重试；如果问题持续，可导出脱敏诊断报告联系支持人员。</p><button onClick={() => setPage('diagnostics')}>打开故障诊断</button>
         </div>
       )}
 
-      <div className="grid">
-        <section className="card">
-          <h2>1. 环境检测</h2>
+      <div className="page-group">
+        <section className="card" hidden={page !== 'environment'}>
+          <h2>环境检查</h2><p>检查完成后，查看部署方案并确认。</p><div className="row"><button className="primary" onClick={() => setPage('deploy')}>下一步：部署</button></div>
           <div className="row">
             <button onClick={scan} disabled={Boolean(busy)}>
               {busy === 'scan' ? '检测中…' : '重新检测'}
@@ -1017,8 +1032,8 @@ export function App(): JSX.Element {
           )}
         </section>
 
-        <section className="card">
-          <h2>2. 运行状态</h2>
+        <section className="card" hidden={page !== 'status'}>
+          <h2>运行状态</h2>
           <div className="row">
             <button className="primary" onClick={launch} disabled={Boolean(busy) || !info?.dshVersion}>
               {busy === 'launch' ? '启动中…' : '启动 Harness'}
@@ -1083,8 +1098,8 @@ export function App(): JSX.Element {
         </section>
       </div>
 
-      <section className="card">
-        <h2>3. 部署（Node → pnpm → Harness → web profile → QQ 插件）</h2>
+      <section className="card" hidden={page !== 'deploy'}>
+        <h2>部署助手</h2><div className="row"><button onClick={() => setPage('environment')}>上一步</button><button onClick={() => setPage('model')}>下一步：模型配置</button></div>
         <div className="row">
           <button className="primary" onClick={openDeploy} disabled={Boolean(busy) || running}>
             {busy === 'plan' ? '正在生成安装方案…' : task?.status === 'succeeded' ? '重新部署（修复）' : '开始部署'}
@@ -1121,9 +1136,9 @@ export function App(): JSX.Element {
           )}
         </div>
 
-        <div className="progress">
-          <div style={{ width: `${Math.round(progress * 100)}%` }} />
-        </div>
+        <div className="progress" role="progressbar" aria-label="部署进度" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={completedSteps}>
+          <div style={{ width: `${steps.length ? Math.round(completedSteps / steps.length * 100) : Math.round(progress * 100)}%` }} />
+        </div><p>已完成 {completedSteps} / {steps.length} 步</p>
         <p className="muted">{stage ? `当前阶段：${stage}` : task?.status === 'succeeded' ? '全部步骤已完成' : '尚未开始'}</p>
         {decision?.blocked && (
           <p className="muted">
@@ -1168,9 +1183,9 @@ export function App(): JSX.Element {
         {task?.error && <div className="error">{task.error}</div>}
       </section>
 
-      <div className="grid">
-        <section className="card">
-          <h2>4. QQ 接入</h2>
+      <div className="page-group">
+        <section className="card" hidden={page !== 'qq'}>
+          <h2>QQ 接入</h2><div className="row"><button onClick={() => setPage('model')}>上一步</button><button onClick={() => setPage('finish')}>查看使用指南</button></div>
           <div className="row">
             <button className={qqTab === 'official' ? 'primary' : ''} onClick={() => setQqTab('official')}>
               官方 QQ Bot
@@ -1487,8 +1502,8 @@ export function App(): JSX.Element {
           )}
         </section>
 
-        <section className="card">
-          <h2>5. 验收门禁与诊断</h2>
+        <section className="card" hidden={page !== 'diagnostics'}>
+          <h2>故障诊断</h2>
           <p>
             <span className="badge warn">{boot?.qqGate.id}：未通过</span>
           </p>
@@ -1507,8 +1522,8 @@ export function App(): JSX.Element {
         </section>
       </div>
 
-      <section className="card">
-        <h2>6. 大模型 API 配置</h2>
+      <section className="card" hidden={page !== 'model'}>
+        <h2>模型配置</h2><div className="row"><button onClick={() => setPage('deploy')}>上一步</button><button onClick={() => setPage('qq')}>下一步：QQ 接入</button></div>
         <p className="muted">
           软件本身不提供、也不代理模型服务。请用你自己的 API Key：打开服务商控制台（DeepSeek 为
           platform.deepseek.com →「API keys」），创建一个 Key 后粘贴到下面。费用由服务商按用量收取。
