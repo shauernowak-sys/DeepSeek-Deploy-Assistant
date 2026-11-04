@@ -3,6 +3,7 @@ export * from './process/runner';
 export * from './process/proxy';
 export * from './runtime/node';
 export * from './pkgmgr/pnpm';
+export * from './pkgmgr/pack';
 export * from './harness/cli';
 export * from './harness/desktop';
 export * from './detect/system';

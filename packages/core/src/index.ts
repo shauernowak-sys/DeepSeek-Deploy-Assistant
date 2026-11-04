@@ -14,6 +14,7 @@ export * from './market/install-plan';
 export * from './market/source-report';
 export * from './market/version-plan';
 export * from './market/profile-backup';
+export * from './market/local-import';
 export * from './market/index-build';
 export * from './engine/journal';
 export * from './engine/plan';

@@ -33,6 +33,7 @@
 | M4-D09+P | [D09 / P-8 / P-9 / P-10 / D03 实施报告](./M4-D09-P8-P9-P10-D03-实施报告.md) | D09 结构化验收与策展规则；P-8 registry 回退（CLI 逐层换源 + profile `plugin-manager` 双源配置）；P-9 `downloadVerified` 错误码；P-10 安装入口收敛（删除 `installPlugin(spec)`，精确 spec + 白名单）；D03 9 步安装编排（第 1 步 compat、按步重试、缺证据记 unverified、`marketInstallTarget` 与官方等价位） | **已完成（2026-11-04）；496 测试通过；D02 UI 暂缓** |
 | M4-P11+D06 | [P-11 + D06 实施报告](./M4-P11-D06-实施报告.md) | P-11 失效代理检测（启动探测 + 仅子进程剔除，不改系统设置）；D06 逐层换源的源与耗时记录、tarball host 记录（pnpm 不输出时如实"未取得"）、`probe:registry` 干净缓存复测（镜像 2.0 s / 官方 7.6 s，各自单源）、L1 接口位与计划快照 | **已完成（2026-11-04）；516 测试通过** |
 | M4-D07+D08 | [D07 + D08 实施报告](./M4-D07-D08-实施报告.md) · [回滚 E2E 证据](./evidence/m4-d08-restore-e2e.log) | D07 四态版本决策（同版本短路、升级限白名单、降级需二次确认、切换=remove+add）；D08 文件级备份/恢复（4 个声明文件、保留 3 份、失败回滚、禁 `--from-default-profile`、拒 desktop profile）；真实链路验证"恢复后 listPlugins 与备份前一致"，并固化恢复后必须 `--force` 重建依赖 | **已完成（2026-11-04）；540 测试通过；E2E PASS** |
+| M4-D04 | [D04 本地导入实施报告](./M4-D04-实施报告.md) | zip / tgz / 目录 → 绝对路径 `.tgz`（目录与 zip 用 `pnpm pack --config.ignore-scripts=true`）；许可门禁先行（导入即分发，QQ 插件被拒）；`name/version`+`dsh.bundle.patch`+生命周期脚本校验；自带 ustar 读取与 zip-slip 防护；SHA-256 比对失败即删产物 | **已完成（2026-11-04）；557 测试通过；产物经 pnpm 实装验证** |
 
 ---
 
