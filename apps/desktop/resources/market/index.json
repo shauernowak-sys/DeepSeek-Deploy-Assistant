@@ -1,0 +1,84 @@
+{
+  "format": 1,
+  "title": {
+    "en": "DeepSeek Deploy Assistant plugin catalog",
+    "zh": "插件资源中心"
+  },
+  "description": {
+    "en": "Curated plugins for the locked DeepSeek Harness combination.",
+    "zh": "为锁定版本组合策展的插件清单；在线安装，不由本软件分发插件字节。"
+  },
+  "metadata": {
+    "categories": {
+      "qq-bot": {
+        "title": {
+          "en": "QQ integrations",
+          "zh": "QQ 接入"
+        }
+      }
+    },
+    "labels": {
+      "official": {
+        "title": {
+          "en": "Official",
+          "zh": "官方"
+        }
+      }
+    },
+    "sortKeys": {
+      "publisher": {
+        "title": {
+          "en": "Publisher",
+          "zh": "发布方"
+        },
+        "order": "asc"
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "@tencent-connect/dsh-qqbot",
+      "title": {
+        "en": "Official QQ bot",
+        "zh": "官方 QQ 机器人"
+      },
+      "description": {
+        "en": "Tencent's official QQ Open Platform bot plugin that links QQ groups and direct messages to Harness.",
+        "zh": "腾讯官方 QQ 开放平台机器人插件，用扫码方式把 QQ 群/私聊接到 Harness。"
+      },
+      "icon": "icons/plg-official-qqbot.svg",
+      "author": "Tencent Connect",
+      "homepage": "https://github.com/tencent-connect/dsh-qqbot#readme",
+      "repository": {
+        "url": "https://github.com/tencent-connect/dsh-qqbot"
+      },
+      "metadata": {
+        "category": "qq-bot",
+        "keywords": [
+          "qq",
+          "bot",
+          "tencent",
+          "chat"
+        ],
+        "labels": [
+          "official"
+        ],
+        "sortKeys": {
+          "publisher": 0
+        }
+      },
+      "versions": [
+        {
+          "version": "0.5.5",
+          "publishTimestamp": 1793375955,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "=0.2.0-rc.2"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -12,12 +12,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run tests/integration",
-    "license:check": "node scripts/license-check.mjs",
+    "license:check": "tsx scripts/license-gate.ts --scope=product",
+    "build:index": "tsx scripts/build-index.ts",
+    "validate:index": "tsx scripts/validate-index.ts",
     "verify": "npm run typecheck && npm run test && npm run license:check",
     "dist": "electron-vite build && electron-builder --win --dir --x64 && node scripts/set-win-version.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked",
     "dist:dir": "electron-vite build && electron-builder --win --dir --x64 && node scripts/set-win-version.mjs"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.1-alpha.4",
     "@types/js-yaml": "4.0.9",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",
@@ -28,6 +31,7 @@
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "resedit": "1.7.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"

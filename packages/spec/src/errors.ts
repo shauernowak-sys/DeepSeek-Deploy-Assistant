@@ -17,6 +17,7 @@ export const ERROR_CODES = {
   E_DECISION_BLOCKED: 'E_DECISION_BLOCKED',
   E_DECISION_UNCONFIRMED: 'E_DECISION_UNCONFIRMED',
   E_DISTRIBUTION_BLOCKED: 'E_DISTRIBUTION_BLOCKED',
+  E_LICENSE_BLOCKED: 'E_LICENSE_BLOCKED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -59,5 +60,9 @@ export const DIAGNOSTICS: Record<ErrorCode, { cause: string; action: string }> =
   E_DISTRIBUTION_BLOCKED: {
     cause: '该组件的依赖许可不允许我方分发（离线包/镜像/重打包）',
     action: '改用在线安装；本软件只代为调用官方安装命令，不复制其字节',
+  },
+  E_LICENSE_BLOCKED: {
+    cause: '依赖闭包中存在禁止再分发或需人工复核的许可',
+    action: '改为在线安装（不复制其字节）；确需分发时先取得授权并把许可结论写回 catalog',
   },
 };

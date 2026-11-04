@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { BASELINE } from './domain';
 
 /**
@@ -79,3 +81,24 @@ export const QQ_PLUGIN_DISTRIBUTION: DistributionPolicy = {
     '官方 QQ 插件仅支持在线安装：其运行时依赖 @tencent-connect/qqbot-connector 为 UNLICENSED，' +
     '本软件不打包、不镜像、不随包分发，因此不提供离线安装。安装需要联网（默认走国内镜像加速）。',
 };
+
+/** D11 许可门禁的三态判定（详见 docs/M4-技术架构决策.md §6）。 */
+export const DEPS_LICENSE_VERDICTS = ['allowed', 'needs-review', 'denied'] as const;
+
+export type DepsLicenseVerdict = (typeof DEPS_LICENSE_VERDICTS)[number];
+
+/**
+ * 闭包内一个包的许可结论。`verdict` 与 `redistributable` 由门禁计算，不允许在 catalog 里手写，
+ * 否则结论会随依赖升级而静默过期。
+ */
+export const DepsClosureEntrySchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.string().min(1),
+    license: z.string().min(1),
+    verdict: z.enum(DEPS_LICENSE_VERDICTS),
+    redistributable: z.boolean(),
+  })
+  .strict();
+
+export type DepsClosureEntry = z.infer<typeof DepsClosureEntrySchema>;

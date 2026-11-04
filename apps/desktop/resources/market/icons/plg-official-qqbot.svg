@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="QQ bot plugin icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f6bff"/>
+      <stop offset="1" stop-color="#1c3fb8"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="26" y="38" width="76" height="52" rx="16" fill="#ffffff"/>
+  <path d="M46 90 L46 104 L64 90 Z" fill="#ffffff"/>
+  <circle cx="48" cy="64" r="7" fill="#2f6bff"/>
+  <circle cx="64" cy="64" r="7" fill="#2f6bff"/>
+  <circle cx="80" cy="64" r="7" fill="#2f6bff"/>
+  <circle cx="64" cy="26" r="5" fill="#ffffff"/>
+  <rect x="62" y="30" width="4" height="8" rx="2" fill="#ffffff"/>
+</svg>

@@ -2,6 +2,7 @@ export * from './domain';
 export * from './environment';
 export * from './errors';
 export * from './licensing';
+export * from './market';
 export * from './manifest';
 export * from './ipc';
 export * from './qq';
