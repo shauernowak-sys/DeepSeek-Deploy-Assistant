@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
 import {
@@ -138,7 +138,10 @@ export class ApiService {
     if (problems.length > 0) return { ok: false, problems, message: problems.join('；') };
 
     const typedKey = input.apiKey?.trim();
-    const storedKey = typedKey || (await this.secrets.get(SECRET_KEY));
+    // Captured before any write: a failed save must put the *previous* credential back, otherwise
+    // the "rolled back" message would be false and the old key would be gone for good.
+    const previousKey = await this.secrets.get(SECRET_KEY);
+    const storedKey = typedKey || previousKey;
     if (!storedKey) return { ok: false, problems: ['缺少 API Key'], message: '请填写 API Key' };
 
     const patchBackup = await this.backup(this.patchPath);
@@ -147,20 +150,22 @@ export class ApiService {
     try {
       await mkdir(join(this.paths.dshHome, 'profiles', BASELINE.dsh.profile), { recursive: true });
       const currentPatch = (await fileExists(this.patchPath)) ? await readFile(this.patchPath, 'utf8') : '[]\n';
-      await writeFile(this.patchPath, applyManagedBlock(currentPatch, config), 'utf8');
+      await writeFileAtomic(this.patchPath, applyManagedBlock(currentPatch, config));
 
-      if (typedKey || !(await this.secrets.get(SECRET_KEY))) await this.secrets.set(SECRET_KEY, storedKey);
+      if (typedKey || !previousKey) await this.secrets.set(SECRET_KEY, storedKey);
       await writeFileAtomic(this.configPath, JSON.stringify(config, null, 2));
 
       const harness = await this.verifyHarness(config);
       if (harness && !harness.ok) {
-        await this.restore(patchBackup, this.patchPath);
-        await this.restore(configBackup, this.configPath);
+        const unrecovered = await this.rollbackSavedState(patchBackup, configBackup, previousKey);
         return {
           ok: false,
           applied: false,
-          problems: harness.problems,
-          message: 'Harness 没有接受这份配置，已回滚到写入前的状态',
+          problems: [...harness.problems, ...unrecovered],
+          message:
+            unrecovered.length === 0
+              ? 'Harness 没有接受这份配置，已回滚到写入前的状态'
+              : 'Harness 没有接受这份配置，且回滚未完全成功（详见问题列表）',
         };
       }
 
@@ -178,18 +183,24 @@ export class ApiService {
           : '配置已保存；检测到 Harness 尚未部署，部署后会自动生效',
       };
     } catch (error) {
-      await this.restore(patchBackup, this.patchPath);
-      await this.restore(configBackup, this.configPath);
       const message = error instanceof Error ? error.message : String(error);
+      const unrecovered = await this.rollbackSavedState(patchBackup, configBackup, previousKey);
       await this.container.logger.error('api', `provider save failed: ${message}`);
-      return { ok: false, problems: [message], message: `保存失败，已回滚：${message}` };
+      return {
+        ok: false,
+        problems: [message, ...unrecovered],
+        message:
+          unrecovered.length === 0
+            ? `保存失败，已回滚：${message}`
+            : `保存失败，且回滚未完全成功：${message}`,
+      };
     }
   }
 
   async remove(): Promise<ApiStatus> {
     if (await fileExists(this.patchPath)) {
       const patch = await readFile(this.patchPath, 'utf8');
-      await writeFile(this.patchPath, removeManagedBlock(patch), 'utf8');
+      await writeFileAtomic(this.patchPath, removeManagedBlock(patch));
     }
     await rm(this.configPath, { force: true });
     await this.secrets.remove(SECRET_KEY);
@@ -254,13 +265,53 @@ export class ApiService {
     return removed;
   }
 
+  /**
+   * Best-effort rollback of everything `save` touched, including the DPAPI credential.
+   * Returns one message per part that could not be restored, so the caller can avoid claiming
+   * a clean rollback it did not achieve.
+   */
+  private async rollbackSavedState(
+    patchBackup: string | undefined,
+    configBackup: string | undefined,
+    previousKey: string | undefined,
+  ): Promise<string[]> {
+    const failed: string[] = [];
+    try {
+      await this.restore(patchBackup, this.patchPath);
+    } catch (error) {
+      failed.push(`运行时补丁未能恢复：${describeError(error)}`);
+    }
+    try {
+      await this.restore(configBackup, this.configPath);
+    } catch (error) {
+      failed.push(`API 配置未能恢复：${describeError(error)}`);
+    }
+    try {
+      if (previousKey) await this.secrets.set(SECRET_KEY, previousKey);
+      else await this.secrets.remove(SECRET_KEY);
+    } catch (error) {
+      failed.push(`密钥未能恢复：${describeError(error)}`);
+    }
+    return failed;
+  }
+
+  /**
+   * Restores a backup atomically. Reading the whole file first and then going through
+   * `writeFileAtomic` matters: a plain `copyFile` would truncate the target if the rollback
+   * itself were interrupted, which is exactly the state this code exists to prevent.
+   */
   private async restore(backupPath: string | undefined, target: string): Promise<void> {
     if (backupPath) {
-      await copyFile(backupPath, target);
+      const content = await readFile(backupPath, 'utf8');
+      await writeFileAtomic(target, content);
       return;
     }
     await rm(target, { force: true });
   }
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export const DEFAULT_API_CONFIG = DEEPSEEK_TEMPLATE;

@@ -491,8 +491,16 @@ export function App(): JSX.Element {
   const pause = () =>
     run('pause', async () => {
       if (!task) return;
-      mergeTask(await api.pauseDeploy(task.taskId));
-      setNotice('已暂停。已完成的步骤会保留，点“继续”从下一步开始。');
+      const next = await api.pauseDeploy(task.taskId);
+      mergeTask(next);
+      // Only report a pause the main process actually performed: pausing a task that already
+      // failed (or was left behind by a crash) does nothing, and saying "已暂停" would be a lie.
+      if (next?.status === 'paused') {
+        setNotice('已暂停。已完成的步骤会保留，点“继续”从下一步开始。');
+        return;
+      }
+      setNotice(undefined);
+      setError(`任务当前不在运行，无法暂停；实际状态：${TASK_LABEL[next?.status ?? ''] ?? '未知'}`);
     });
 
   const openCancel = () =>

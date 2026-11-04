@@ -26,6 +26,8 @@ export interface CancelResult {
 export class DeployService {
   private running?: Promise<TaskSummary>;
   private controlHandle?: ReturnType<typeof createTaskControl>;
+  /** Tail of the lifecycle chain: start / cancel / rollback must never interleave. */
+  private lifecycle: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly deps: DeployServiceDeps) {}
 
@@ -35,6 +37,20 @@ export class DeployService {
 
   get isRunning(): boolean {
     return this.running !== undefined;
+  }
+
+  /**
+   * Serialises the three operations that inspect then mutate the same journal and the same files.
+   * Without it, a `rollback` that had already passed its `isRunning` check could resume after a
+   * `start` and delete the artifacts the new run had just created.
+   */
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.lifecycle.then(operation, operation);
+    this.lifecycle = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   journalPath(): string {
@@ -71,19 +87,45 @@ export class DeployService {
    * `fresh` retires the current journal first so an already successful deployment is
    * re-verified step by step instead of being skipped as "nothing to do".
    */
-  start(options: { fresh?: boolean } = {}): { taskId: string } {
-    if (!this.running) {
-      if (options.fresh) this.retireJournal();
-      this.controlHandle = createTaskControl();
-      const handle = this.controlHandle;
-      this.running = this.execute(handle.control)
-        .catch((error: unknown) => this.failUnexpected(error))
-        .finally(() => {
-          this.running = undefined;
-          this.controlHandle = undefined;
-        });
+  start(options: { fresh?: boolean } = {}): Promise<{ taskId: string }> {
+    return this.serialize(async () => {
+      if (!this.running) {
+        if (options.fresh) this.retireJournal();
+        this.controlHandle = createTaskControl();
+        const handle = this.controlHandle;
+        this.running = this.execute(handle.control)
+          .catch((error: unknown) => this.failUnexpected(error))
+          .finally(() => {
+            this.running = undefined;
+            this.controlHandle = undefined;
+          });
+      }
+      return { taskId: this.taskId };
+    });
+  }
+
+  /**
+   * A journal left at `running` means the previous process died mid-step. Nothing is running
+   * now, so that stored status is a lie: the UI would disable both "deploy" and "rollback"
+   * forever and a click on "pause" would report a pause that never happened.
+   */
+  async reconcileInterrupted(): Promise<void> {
+    if (this.isRunning) return;
+    const data = await Journal.load(this.journalPath());
+    if (!data || data.status !== 'running') return;
+
+    const interrupted = data.steps.find((step) => step.status === 'running');
+    if (interrupted) {
+      interrupted.status = 'failed';
+      interrupted.message = '上次运行被中断';
+      interrupted.finishedAt = new Date().toISOString();
     }
-    return { taskId: this.taskId };
+    data.status = 'failed';
+    data.error = '上次运行未正常结束（应用被关闭或崩溃）。已完成的步骤会保留，可直接重试。';
+    data.pausedByUser = false;
+    data.finishedAt = new Date().toISOString();
+    await new Journal(this.journalPath()).save(data);
+    await this.deps.container.logger.warn('deploy', '检测到上次运行被中断，已把任务状态修正为 failed');
   }
 
   /**
@@ -125,7 +167,11 @@ export class DeployService {
    * Cancel + optional cleanup. Cleanup deletes ONLY paths recorded in this task's journal,
    * so user-installed Harness/profile/config outside this task are untouched.
    */
-  async cancel(cleanup: boolean): Promise<CancelResult> {
+  cancel(cleanup: boolean): Promise<CancelResult> {
+    return this.serialize(() => this.cancelNow(cleanup));
+  }
+
+  private async cancelNow(cleanup: boolean): Promise<CancelResult> {
     const wasRunning = this.isRunning;
     this.controlHandle?.cancel();
     await this.waitForIdle();
@@ -179,7 +225,11 @@ export class DeployService {
    * Destructive: deletes the paths this task recorded. Requires `confirmed` so a stray click or
    * a renderer bug can never trigger it, and every path is re-verified against the managed root.
    */
-  async rollback(confirmed: boolean): Promise<RollbackResult> {
+  rollback(confirmed: boolean): Promise<RollbackResult> {
+    return this.serialize(() => this.rollbackNow(confirmed));
+  }
+
+  private async rollbackNow(confirmed: boolean): Promise<RollbackResult> {
     const { container } = this.deps;
     const empty: RollbackResult = { ok: false, message: '', deleted: [], refused: [] };
 

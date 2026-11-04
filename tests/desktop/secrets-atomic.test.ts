@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,6 +17,25 @@ vi.mock('electron', () => ({
     decryptString: (buffer: Buffer) => buffer.toString('utf8').replace(/^enc:/, ''),
   },
 }));
+
+/**
+ * Makes every replacement of `file` fail, without touching its content.
+ *
+ * The previous trick — putting a directory at `<file>.tmp` — only worked while the temp name was
+ * fixed. With per-write unique temp names it became a silent no-op, so fail at the rename instead:
+ * Windows refuses to replace a read-only target, while POSIX ignores the file's own mode and lets
+ * the containing directory decide.
+ */
+async function denyReplacing(file: string): Promise<() => Promise<void>> {
+  if (process.platform === 'win32') {
+    await chmod(file, 0o444);
+    return () => chmod(file, 0o666);
+  }
+  const dir = dirname(file);
+  const before = (await stat(dir)).mode;
+  await chmod(dir, 0o555);
+  return () => chmod(dir, before);
+}
 
 const { Secrets } = await import('../../apps/desktop/src/main/security/secrets');
 
@@ -50,9 +69,13 @@ describe('敏感数据写入可靠性', () => {
     await secrets.set('api.credential', KEY);
     const before = await readFile(join(dir, 'secrets.bin'), 'utf8');
 
-    // Occupy the temp path with a directory: the write must fail instead of truncating the store.
-    await mkdir(join(dir, 'secrets.bin.tmp'), { recursive: true });
-    await expect(secrets.set('other.key', 'new-value')).rejects.toThrow();
+    // Make the replacement of secrets.bin fail: the write must fail instead of truncating the store.
+    const restore = await denyReplacing(join(dir, 'secrets.bin'));
+    try {
+      await expect(secrets.set('other.key', 'new-value')).rejects.toThrow();
+    } finally {
+      await restore();
+    }
 
     expect(await readFile(join(dir, 'secrets.bin'), 'utf8')).toBe(before);
     expect(await secrets.get('api.credential')).toBe(KEY);
@@ -101,13 +124,19 @@ describe('writeFileAtomic', () => {
     expect((await readdir(dir)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
-  it('写入失败时保持旧文件内容不变', async () => {
+  it('写入失败时保持旧文件内容不变，且不残留临时文件', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dda-atomic-'));
     const file = join(dir, 'config.json');
     await writeFileAtomic(file, '{"v":1}');
 
-    await mkdir(`${file}.tmp`, { recursive: true });
-    await expect(writeFileAtomic(file, '{"v":2}')).rejects.toThrow();
+    const restore = await denyReplacing(file);
+    try {
+      await expect(writeFileAtomic(file, '{"v":2}')).rejects.toThrow();
+    } finally {
+      await restore();
+    }
+
     expect(await readFile(file, 'utf8')).toBe('{"v":1}');
+    expect((await readdir(dir)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 });
