@@ -351,6 +351,7 @@ export class DeployService {
       log: (m) => void container.logger.info('deploy', m),
       runtime,
       qqMode,
+      proxyExclusions: container.childEnvExclusions,
     });
   }
 

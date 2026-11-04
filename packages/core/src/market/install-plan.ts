@@ -4,6 +4,7 @@ import type { CatalogEntry, CompatMatrix, PluginState } from '@dda/spec';
 import { assertCombination } from '../compat/matrix';
 import { parseComposedDump } from '../api/verify';
 import { installWithRegistryFallback, registryPlan, type RegistryLayer } from './registries';
+import { extractTarballHosts, formatTarballHosts, type TarballHostReport } from './source-report';
 
 /**
  * D03：插件安装编排（对齐 PLG-4 的 9 步，docs/M4-技术架构决策.md §4.2）。
@@ -42,6 +43,8 @@ export interface PluginInstallOutcome {
   spec: string;
   registry: RegistryLayer;
   steps: PluginInstallStepOutcome[];
+  /** D06：本次安装实际从哪些 host 下载 tarball（拿不到时 total=0）。 */
+  tarballHosts: TarballHostReport;
   /** 只有真实探测成功才会是 `verified`；缺证据一律 `unverified`。 */
   connectivity: ConnectivityVerdict;
   connectivityDetail: string;
@@ -50,8 +53,8 @@ export interface PluginInstallOutcome {
 export interface PluginInstallDeps {
   /** 第 2 步：profile 可写 / 磁盘余量 / registry 可达。抛错即失败。 */
   precheck: () => Promise<void>;
-  /** 第 5 步：带 registry 调用官方安装命令。 */
-  addPlugin: (layer: RegistryLayer) => Promise<void>;
+  /** 第 5 步：带 registry 调用官方安装命令；返回其输出（用于 D06 记录 tarball host）。 */
+  addPlugin: (layer: RegistryLayer) => Promise<string | void>;
   /** 第 6 步。 */
   listPlugins: () => Promise<PluginState[]>;
   /** 第 6 步可选：profile `package.json` 里该依赖的版本。 */
@@ -187,6 +190,7 @@ export async function installCatalogPlugin(
   let usedRegistry: RegistryLayer | undefined;
   let connectivity: ConnectivityVerdict = 'unverified';
   let connectivityDetail = '未执行连通探测';
+  let installOutput = '';
 
   // 第 1 步：compat 门禁。必须在任何 pnpm 调用之前。
   await runStep(
@@ -248,7 +252,8 @@ export async function installCatalogPlugin(
         log,
         install: async (layer) => {
           try {
-            await deps.addPlugin(layer);
+            const output = await deps.addPlugin(layer);
+            if (typeof output === 'string') installOutput += `${output}\n`;
           } catch (error) {
             // peerDeps 缺失时给出"宿主版本不匹配"的可读原因，而不是把 pnpm 原文丢给用户。
             const explanation = explainInstallFailure(describe(error), entry);
@@ -260,7 +265,8 @@ export async function installCatalogPlugin(
         },
       });
       usedRegistry = result.registry;
-      return `来自${result.registry.label}`;
+      const hosts = extractTarballHosts(installOutput);
+      return `来自${result.registry.label}；${formatTarballHosts(hosts)}`;
     },
     attempts,
     outcomes,
@@ -351,6 +357,7 @@ export async function installCatalogPlugin(
     spec: installTarget.spec,
     registry: usedRegistry ?? plan[0]!,
     steps: outcomes,
+    tarballHosts: extractTarballHosts(installOutput),
     connectivity,
     connectivityDetail,
   };

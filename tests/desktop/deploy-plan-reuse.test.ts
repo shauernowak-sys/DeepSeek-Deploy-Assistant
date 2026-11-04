@@ -18,7 +18,7 @@ function fakeCli(version = '0.2.0-rc.2'): DshCli {
     ensureProfile: async () => undefined,
     listPlugins: async () => [],
     dumpConfig: async () => '[]',
-    addPlugin: async () => undefined,
+    addPlugin: async () => ({ code: 0, stdout: '', stderr: '' }),
     removePlugin: async () => undefined,
     launchWeb: async () => {
       throw new Error('not used');
@@ -121,6 +121,7 @@ describe('部署计划：复用已有运行时', () => {
     const { steps } = await fixture(undefined);
     const ids = steps.map((s) => s.id);
     expect(ids).toEqual([
+      'check-proxy',
       'check-disk',
       'download-node',
       'extract-node',

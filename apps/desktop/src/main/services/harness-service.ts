@@ -92,6 +92,7 @@ export class HarnessService {
       registry: this.container.registry,
       nodeExePath: runtime.node.exe,
       binPath: runtime.harness.bin,
+      proxyExclusions: this.container.childEnvExclusions,
     });
   }
 
@@ -251,7 +252,10 @@ export class HarnessService {
           precheck: async () => {
             await access(this.container.paths.dshHome, fsConstants.W_OK);
           },
-          addPlugin: (layer) => cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url }),
+          addPlugin: async (layer) => {
+            const result = await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url });
+            return `${result.stdout}\n${result.stderr}`;
+          },
           listPlugins: () => cli.listPlugins(BASELINE.dsh.profile),
           dumpConfig: () => cli.dumpConfig(BASELINE.dsh.profile),
           checkConfig: async () => this.checkPluginConfig(),
@@ -274,7 +278,9 @@ export class HarnessService {
       log: (line) => {
         void this.container.logger.info('plugin', line);
       },
-      install: (layer) => cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url }),
+      install: async (layer) => {
+        await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url });
+      },
     });
     await this.container.logger.info('plugin', `installed ${spec} from ${result.registry.id}`);
   }

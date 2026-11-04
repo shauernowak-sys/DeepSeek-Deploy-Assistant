@@ -222,6 +222,29 @@ describe('D03 验收④：peerDeps 缺失给出可读原因', () => {
   });
 });
 
+describe('D06 tarball host 记录进入安装结果', () => {
+  it('从 dsh 输出统计 host，并写进步骤明细与 outcome', async () => {
+    const addPlugin: PluginInstallDeps['addPlugin'] = async () =>
+      [
+        'https://registry.npmmirror.com/@tencent-connect/dsh-qqbot/-/dsh-qqbot-0.5.5.tgz',
+        'https://registry.npmmirror.com/yaml/-/yaml-2.8.1.tgz',
+        'https://registry.npmjs.org/@tencent-connect/qqbot-connector/-/qqbot-connector-1.2.0.tgz',
+      ].join('\n');
+
+    const outcome = await installCatalogPlugin(
+      request(VERIFIED_MATRIX, '0.2.0-rc.2'),
+      deps({ addPlugin }),
+    );
+
+    expect(outcome.tarballHosts.total).toBe(3);
+    expect(outcome.tarballHosts.hosts).toEqual([
+      { host: 'registry.npmmirror.com', count: 2 },
+      { host: 'registry.npmjs.org', count: 1 },
+    ]);
+    expect(outcome.steps.find((item) => item.id === 'install')?.detail).toContain('registry.npmjs.org');
+  });
+});
+
 describe('D03 验收⑤：成功路径与证据等级', () => {
   it('成功时前 6 步 succeeded，7–9 步缺证据记 unverified（不得伪造成功）', async () => {
     const outcome = await installCatalogPlugin(request(VERIFIED_MATRIX, '0.2.0-rc.2'), deps());

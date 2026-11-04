@@ -13,6 +13,9 @@ export const ALLOWED_EXECUTABLES = ['node.exe', 'reg.exe'] as const;
 export type AllowedExecutable = (typeof ALLOWED_EXECUTABLES)[number];
 
 const SHELL_META = /[&|<>^`";$()\r\n]/;
+/** `git+https://…&path:/dir` 这类 spec 里的 `&` 是 pnpm 参数分隔符，不是 shell 语义。 */
+const GIT_SPEC = /^git\+(?:https?|ssh):\/\//;
+const SHELL_META_EXCEPT_AMP = /[|<>^`";$()\r\n]/;
 
 export interface RunOptions {
   exePath: string;
@@ -43,7 +46,9 @@ export function assertExecutableAllowed(exePath: string): AllowedExecutable {
 /** Arguments are passed as an array (never concatenated); we still reject shell metacharacters. */
 export function assertArgsSafe(args: string[]): void {
   for (const arg of args) {
-    if (SHELL_META.test(arg)) {
+    // git spec 由 pnpm 解析（`&path:/sub` 是它的参数分隔符），但仍要挡掉真正的 shell 元字符。
+    const meta = GIT_SPEC.test(arg) ? SHELL_META_EXCEPT_AMP : SHELL_META;
+    if (meta.test(arg)) {
       throw new DdaError(ERROR_CODES.E_SPAWN_DENIED, `argument contains shell metacharacters: ${arg}`, '参数校验失败');
     }
   }

@@ -22,7 +22,15 @@ async function container(): Promise<Container> {
   const logger = await Logger.create(paths.logs, 'gate.log');
   const nodeManifest = RuntimeManifestSchema.parse(JSON.parse(await readFile(join(manifests, 'node.json'), 'utf8')));
   const matrix = loadMatrix(JSON.parse(await readFile(join(manifests, 'compat.json'), 'utf8')));
-  return { paths, logger, nodeManifest, matrix, manifestsDir: manifests, registry: 'https://registry.npmmirror.com' };
+  return {
+    paths,
+    logger,
+    nodeManifest,
+    matrix,
+    manifestsDir: manifests,
+    registry: 'https://registry.npmmirror.com',
+    childEnvExclusions: [],
+  };
 }
 
 function gateOn(c: Container, probe: () => Promise<ReturnType<typeof report>>, now?: () => number) {

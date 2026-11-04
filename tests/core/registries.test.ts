@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  REGISTRY_L1_SLOT,
   REGISTRY_NPMMIRROR,
   REGISTRY_OFFICIAL,
   installWithRegistryFallback,
@@ -24,6 +25,40 @@ describe('P-8 registry 计划（L2 镜像优先、L3 官方兜底）', () => {
     expect(isRegistryRetryable('ERR_PNPM_NO_MATCHING_VERSION No matching version found')).toBe(true);
     expect(isRegistryRetryable('ERR_PNPM_FETCH_401 Unauthorized')).toBe(false);
     expect(isRegistryRetryable('401 authentication required')).toBe(false);
+  });
+});
+
+describe('D06 源策略：计划快照、L1 接口位、尝试记录', () => {
+  it('计划逐字段锁定（镜像 URL / 官方 URL / 顺序 / 展示名）', () => {
+    expect(registryPlan()).toEqual([
+      {
+        id: 'l2-npmmirror',
+        url: 'https://registry.npmmirror.com/',
+        label: '国内镜像 npmmirror',
+      },
+      { id: 'l3-official', url: 'https://registry.npmjs.org/', label: '官方源 npmjs' },
+    ]);
+  });
+
+  it('L1（我方资源库）只是接口位，永不进入计划', () => {
+    expect(REGISTRY_L1_SLOT.blockedBy).toBe('U5');
+    for (const preferred of ['mirror-first', 'official-first'] as const) {
+      expect(registryPlan(preferred).map((layer) => layer.id)).not.toContain(REGISTRY_L1_SLOT.id);
+    }
+  });
+
+  it('每次尝试都记录源、成功与否与耗时', async () => {
+    const install = vi.fn<(layer: RegistryLayer) => Promise<void>>();
+    install.mockRejectedValueOnce(new Error('ERR_PNPM_FETCH_503 down'));
+    install.mockResolvedValueOnce(undefined);
+
+    const result = await installWithRegistryFallback({ spec: 'pkg@1.0.0', install });
+
+    expect(result.history).toHaveLength(2);
+    expect(result.history[0]).toMatchObject({ registry: 'l2-npmmirror', ok: false });
+    expect(result.history[0]?.error).toContain('503');
+    expect(result.history[1]).toMatchObject({ registry: 'l3-official', ok: true });
+    expect(result.history.every((attempt) => typeof attempt.durationMs === 'number')).toBe(true);
   });
 });
 

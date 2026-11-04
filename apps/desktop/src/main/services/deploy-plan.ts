@@ -17,11 +17,13 @@ import {
 import type { Step, StepContext } from '@dda/core';
 import {
   createDshCli,
+  describeProxyReport,
   detectHarnessRoute,
   detectManagedNode,
   dshBinJs,
   ensurePnpm,
   fileExists,
+  findDeadProxySettings,
   installNodeRuntime,
   nodeExe,
   npmCliFor,
@@ -49,6 +51,8 @@ export interface DeployPlanDeps {
   /** 门禁确认的运行时；缺省为私有运行时（兼容回滚等只读路径）。 */
   runtime?: RuntimeSelection;
   qqMode?: 'official' | 'personal';
+  /** P-11：探测到不可达的代理变量名（只影响本计划启动的子进程）。 */
+  proxyExclusions?: readonly string[];
 }
 
 /**
@@ -69,6 +73,7 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
       registry,
       nodeExePath: nodePath,
       binPath: harnessBin,
+      proxyExclusions: deps.proxyExclusions ?? [],
     });
   const getCli = () => cli;
 
@@ -238,6 +243,24 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
 
   return [
     {
+      id: 'check-proxy',
+      title: '检查代理环境变量（不可达时仅在本软件子进程中剔除）',
+      weight: 1,
+      async run(ctx: StepContext) {
+        // P-11：死端口代理会让每次 npm/pnpm 调用退化到 70 s 级（前置验证 §0.3.1）。
+        const report = await findDeadProxySettings(process.env, { timeoutMs: 1200 });
+        ctx.log(describeProxyReport(report));
+        const excluded = deps.proxyExclusions ?? report.dead.map((setting) => setting.name);
+        if (report.dead.length > 0) {
+          ctx.log(
+            excluded.length > 0
+              ? `已从本软件启动的子进程剔除: ${excluded.join(', ')}（未修改系统设置）`
+              : '检测到不可达代理，但本次子进程未配置剔除；安装可能变慢',
+          );
+        }
+      },
+    },
+    {
       id: 'check-disk',
       title: '检查磁盘空间与目录',
       weight: 1,
@@ -359,8 +382,12 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
             precheck: async () => {
               await mkdir(join(paths.dshHome, 'profiles'), { recursive: true });
             },
-            addPlugin: (layer) =>
-              getCli().addPlugin(BASELINE.dsh.profile, QQ_PLUGIN_SPEC, { registry: layer.url }),
+            addPlugin: async (layer) => {
+              const result = await getCli().addPlugin(BASELINE.dsh.profile, QQ_PLUGIN_SPEC, {
+                registry: layer.url,
+              });
+              return `${result.stdout}\n${result.stderr}`;
+            },
             listPlugins: () => getCli().listPlugins(BASELINE.dsh.profile),
             log: (line) => ctx.log(line),
           },

@@ -16,6 +16,12 @@ export const REGISTRY_OFFICIAL = 'https://registry.npmjs.org/';
 
 export type RegistryLayerId = 'l2-npmmirror' | 'l3-official';
 
+/**
+ * L1（我方维护的国内资源库）**接口位**：U5（责任方/成本/SLA）未决前不实现，
+ * 因此 `registryPlan()` 永远不会返回 L1。任何"全部走国内镜像"的承诺都与此冲突，不得出现。
+ */
+export const REGISTRY_L1_SLOT = { id: 'l1-managed', blockedBy: 'U5' } as const;
+
 export interface RegistryLayer {
   id: RegistryLayerId;
   url: string;
@@ -58,9 +64,19 @@ export interface RegistryInstallOptions {
   log?: (line: string) => void;
 }
 
+export interface RegistryAttempt {
+  registry: RegistryLayerId;
+  url: string;
+  ok: boolean;
+  durationMs: number;
+  error?: string;
+}
+
 export interface RegistryInstallResult {
   registry: RegistryLayer;
   attempts: number;
+  /** D06：每次尝试的源与耗时，供日志与诊断导出（成功路径也保留）。 */
+  history: RegistryAttempt[];
 }
 
 /**
@@ -70,15 +86,21 @@ export interface RegistryInstallResult {
 export async function installWithRegistryFallback(options: RegistryInstallOptions): Promise<RegistryInstallResult> {
   const plan = options.plan ?? registryPlan();
   const failures: string[] = [];
+  const history: RegistryAttempt[] = [];
 
   for (const [index, layer] of plan.entries()) {
+    const startedAt = Date.now();
     options.log?.(`从${layer.label}安装 ${options.spec}（${index + 1}/${plan.length}）`);
     try {
       await options.install(layer);
-      options.log?.(`已从${layer.label}安装 ${options.spec}`);
-      return { registry: layer, attempts: index + 1 };
+      const durationMs = Date.now() - startedAt;
+      history.push({ registry: layer.id, url: layer.url, ok: true, durationMs });
+      options.log?.(`已从${layer.label}安装 ${options.spec}（${durationMs} ms）`);
+      return { registry: layer, attempts: index + 1, history };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const durationMs = Date.now() - startedAt;
+      history.push({ registry: layer.id, url: layer.url, ok: false, durationMs, error: message });
       failures.push(`${layer.label}（${layer.url}）：${message}`);
       if (!isRegistryRetryable(message)) {
         throw new DdaError(
@@ -87,7 +109,7 @@ export async function installWithRegistryFallback(options: RegistryInstallOption
           '按上面的原因处理后重试；若提示权限或版本不符，换源无效',
         );
       }
-      options.log?.(`${layer.label}不可用，切换到下一层：${message.split('\n')[0] ?? message}`);
+      options.log?.(`${layer.label}不可用（${durationMs} ms），切换到下一层：${message.split('\n')[0] ?? message}`);
     }
   }
 

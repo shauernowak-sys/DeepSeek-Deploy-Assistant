@@ -30,6 +30,7 @@ async function buildPlan() {
     dumpConfig: async () => '[]',
     addPlugin: async (profile, spec) => {
       calls.push(`addPlugin:${profile}:${spec}`);
+      return { code: 0, stdout: '', stderr: '' };
     },
     removePlugin: async () => undefined,
     launchWeb: async () => {

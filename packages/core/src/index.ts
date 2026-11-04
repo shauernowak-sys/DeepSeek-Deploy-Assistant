@@ -11,6 +11,7 @@ export * from './market/registry-config';
 export * from './market/license-gate';
 export * from './market/install-policy';
 export * from './market/install-plan';
+export * from './market/source-report';
 export * from './market/index-build';
 export * from './engine/journal';
 export * from './engine/plan';

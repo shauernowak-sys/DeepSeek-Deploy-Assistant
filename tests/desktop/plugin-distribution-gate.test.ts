@@ -35,7 +35,7 @@ async function officialSteps(cli: DshCli, runtime?: RuntimeSelection) {
 }
 
 function recordingCli() {
-  const addPlugin = vi.fn(async () => undefined);
+  const addPlugin = vi.fn(async () => ({ code: 0, stdout: '', stderr: '' }));
   const cli: DshCli = {
     version: async () => ({ id: 'dsh', installed: true, version: '0.2.0-rc.2' }),
     ensureProfile: async () => undefined,

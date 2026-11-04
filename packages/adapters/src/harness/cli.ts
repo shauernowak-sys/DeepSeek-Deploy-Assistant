@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 
 import { BASELINE, DdaError, ERROR_CODES, type PluginState, type RuntimeInfo } from '@dda/spec';
 
-import { runCommand, spawnCommand, fileExists, type ChildHandle } from '../process/runner';
+import { runCommand, spawnCommand, fileExists, type ChildHandle, type RunResult } from '../process/runner';
 import type { AppPaths } from '../paths';
 import { dshBinJs, nodeExe } from '../paths';
 
@@ -14,12 +14,17 @@ export interface DshEnvOptions {
   nodeExePath?: string;
   /** 复用系统 Harness 时传入其可执行 JS 入口；默认使用私有 Harness。 */
   binPath?: string;
+  /**
+   * P-11：探测到不可达的代理变量名。只在本子进程的 env 里剔除，
+   * 不修改 `process.env`，也不改用户系统设置。
+   */
+  proxyExclusions?: readonly string[];
 }
 
 export function dshEnv(options: DshEnvOptions, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const { paths, pnpmBinDir, registry } = options;
   const node = options.nodeExePath ?? nodeExe(paths);
-  return {
+  const base: NodeJS.ProcessEnv = {
     ...process.env,
     DSH_HOME: paths.dshHome,
     npm_config_registry: registry,
@@ -28,6 +33,9 @@ export function dshEnv(options: DshEnvOptions, extra: NodeJS.ProcessEnv = {}): N
     PATH: `${dirname(node)};${pnpmBinDir};${process.env.PATH ?? ''}`,
     ...extra,
   };
+  // 剔除失效代理只发生在传出去的副本上（NO_PROXY 不动）。
+  for (const name of options.proxyExclusions ?? []) delete base[name];
+  return base;
 }
 
 export interface DshCli {
@@ -36,7 +44,7 @@ export interface DshCli {
   listPlugins(profile: string): Promise<PluginState[]>;
   /** 组合树转储：用于「已加载」复核（步骤 7）。 */
   dumpConfig(profile: string): Promise<string>;
-  addPlugin(profile: string, spec: string, options?: { registry?: string }): Promise<void>;
+  addPlugin(profile: string, spec: string, options?: { registry?: string }): Promise<RunResult>;
   removePlugin(profile: string, name: string): Promise<void>;
   launchWeb(
     profile: string,
@@ -87,7 +95,7 @@ export function createDshCli(options: DshEnvOptions): DshCli {
       }
       // `--registry=` 会被 dsh 用于预检查询，并原样转发给 pnpm（实测 0.2.0-rc.2）。
       const registryArgs = options?.registry === undefined ? [] : [`--registry=${options.registry}`];
-      await run(['plugin', '--profile', profile, 'add', spec, ...registryArgs], 30 * 60_000);
+      return run(['plugin', '--profile', profile, 'add', spec, ...registryArgs], 30 * 60_000);
     },
 
     async removePlugin(profile, name) {
