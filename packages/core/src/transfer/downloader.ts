@@ -4,7 +4,7 @@ import { mkdir, open, rename, rm, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { DdaError, ERROR_CODES } from '@dda/spec';
-import type { DownloadProgress } from '@dda/spec';
+import type { DownloadProgress, ErrorCode } from '@dda/spec';
 
 export interface DownloadRequest {
   /** Final destination; a `<dest>.part` sibling is used for resume. */
@@ -59,6 +59,8 @@ export async function downloadVerified(req: DownloadRequest): Promise<DownloadRe
 
   await mkdir(dirname(req.destPath), { recursive: true });
   const errors: string[] = [];
+  /** 逐次失败的错误码：最终统一抛错时不能把 E_HASH_MISMATCH 说成网络问题（P-9）。 */
+  const failureCodes: (ErrorCode | undefined)[] = [];
 
   for (let sourceIndex = 0; sourceIndex < req.sources.length; sourceIndex += 1) {
     const source = req.sources[sourceIndex]!;
@@ -146,6 +148,7 @@ export async function downloadVerified(req: DownloadRequest): Promise<DownloadRe
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`${source} #${attempt}: ${message}`);
+        failureCodes.push(error instanceof DdaError ? error.code : undefined);
         if (req.signal?.aborted) {
           throw new DdaError(ERROR_CODES.E_DOWNLOAD_NETWORK, '已取消下载（已保留部分文件）', '可稍后继续');
         }
@@ -158,10 +161,17 @@ export async function downloadVerified(req: DownloadRequest): Promise<DownloadRe
     }
   }
 
+  // 哈希不一致是安全信号，不能被更"常见"的网络错误码掩盖（P-9）。
+  const hashMismatch = failureCodes.includes(ERROR_CODES.E_HASH_MISMATCH);
+  const code: ErrorCode = hashMismatch
+    ? ERROR_CODES.E_HASH_MISMATCH
+    : (failureCodes[failureCodes.length - 1] ?? ERROR_CODES.E_DOWNLOAD_NETWORK);
   throw new DdaError(
-    ERROR_CODES.E_DOWNLOAD_NETWORK,
+    code,
     `all sources failed:\n${errors.join('\n')}`,
-    '检查网络连接与镜像可用性',
+    hashMismatch
+      ? '文件内容与清单哈希不一致：已删除损坏文件，请更换源或检查网络是否被劫持'
+      : '检查网络连接与镜像可用性',
   );
 }
 

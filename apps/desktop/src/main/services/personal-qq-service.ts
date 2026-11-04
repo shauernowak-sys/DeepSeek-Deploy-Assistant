@@ -34,9 +34,11 @@ import {
 import type { Container } from './container';
 import type { HarnessService } from './harness-service';
 
-/** 适配插件：只做 OneBot ↔ Harness 的桥接，不含 QQ 协议实现。 */
-export const ADAPTER_PLUGIN = 'dsh-qq-link';
-export const ADAPTER_VERSION = '1.5.1';
+import { PERSONAL_QQ_ADAPTER } from '@dda/spec';
+
+/** 适配插件：只做 OneBot ↔ Harness 的桥接，不含 QQ 协议实现；版本与白名单在 @dda/spec 单一来源。 */
+export const ADAPTER_PLUGIN = PERSONAL_QQ_ADAPTER.name;
+export const ADAPTER_VERSION = PERSONAL_QQ_ADAPTER.version;
 
 export interface PersonalQqServiceDeps {
   detection?: DetectionDeps;
@@ -238,7 +240,7 @@ export class PersonalQqService {
   /** 安装/修复适配插件（唯一由本软件代装的第三方组件；允许在线安装，不打包）。 */
   async installAdapter(): Promise<PersonalQqActionResult> {
     try {
-      await this.harness.installPlugin(`${ADAPTER_PLUGIN}@${ADAPTER_VERSION}`);
+      await this.harness.installAdapterPlugin();
       const restarted = await this.restartIfRunning();
       await this.container.logger.info('personal-qq', `adapter installed, restarted=${restarted}`);
       return {

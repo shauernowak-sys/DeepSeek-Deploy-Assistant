@@ -90,7 +90,7 @@ describe('downloadVerified', () => {
     const dest = join(dir, 'node.zip');
     await expect(
       downloadVerified({ destPath: dest, sources: [url], sha256: payloadSha, attemptsPerSource: 1 }),
-    ).rejects.toMatchObject({ code: 'E_DOWNLOAD_NETWORK' });
+    ).rejects.toMatchObject({ code: 'E_HASH_MISMATCH' });
     await expect(readFile(dest)).rejects.toThrow();
   });
 
@@ -125,5 +125,28 @@ describe('downloadVerified', () => {
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DdaError);
     expect((error as DdaError).message).toContain('all sources failed');
+  });
+
+  // P-9：最终错误码必须反映真实原因，不能被更"常见"的网络错误码掩盖。
+  it('全是 404 时抛 E_DOWNLOAD_HTTP（不是网络错误）', async () => {
+    const bad = await serve({ failFirst: 99 });
+    await expect(
+      downloadVerified({ destPath: join(await mkdtemp(join(tmpdir(), 'dda-dl-')), 'x.zip'), sources: [bad], sha256: payloadSha, attemptsPerSource: 1 }),
+    ).rejects.toMatchObject({ code: 'E_DOWNLOAD_HTTP' });
+  });
+
+  it('一个源哈希不一致、另一个源不可达时仍报 E_HASH_MISMATCH', async () => {
+    const corrupt = await serve({ corrupt: true });
+    const unreachable = 'http://127.0.0.1:9/never.zip';
+    const dir = await mkdtemp(join(tmpdir(), 'dda-dl-'));
+    const error = await downloadVerified({
+      destPath: join(dir, 'x.zip'),
+      sources: [corrupt, unreachable],
+      sha256: payloadSha,
+      attemptsPerSource: 1,
+      timeoutMs: 2000,
+    }).catch((e: unknown) => e);
+    expect((error as DdaError).code).toBe('E_HASH_MISMATCH');
+    expect((error as DdaError).hint).toContain('哈希');
   });
 });

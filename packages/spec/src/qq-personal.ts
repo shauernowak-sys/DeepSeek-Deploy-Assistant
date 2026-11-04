@@ -112,6 +112,13 @@ export interface PersonalQqBridgeState {
   bindings?: { 类型: string; 号码: string; 会话: string }[];
 }
 
+/** 个人 QQ 适配插件：唯一由本软件代装的第三方插件（只在线安装，不打包、不镜像）。 */
+export const PERSONAL_QQ_ADAPTER = {
+  name: 'dsh-qq-link',
+  version: '1.5.1',
+  spec: 'dsh-qq-link@1.5.1',
+} as const;
+
 /** 适配插件（dsh-qq-link）的安装/加载状态。 */
 export interface PersonalQqAdapterState {
   installed: boolean;

@@ -17,6 +17,7 @@ function fakeCli(version = '0.2.0-rc.2'): DshCli {
     version: async () => ({ id: 'dsh', installed: true, version }),
     ensureProfile: async () => undefined,
     listPlugins: async () => [],
+    dumpConfig: async () => '[]',
     addPlugin: async () => undefined,
     removePlugin: async () => undefined,
     launchWeb: async () => {
@@ -130,6 +131,7 @@ describe('部署计划：复用已有运行时', () => {
       'verify-dsh',
       'assert-combo',
       'ensure-profile',
+      'configure-registry',
       'install-qqbot',
       'verify-plugin',
       'route-report',

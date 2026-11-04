@@ -1,6 +1,21 @@
+import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { constants as fsConstants } from 'node:fs';
 
-import { collectQrArt, describeEvent, parseQqLine, probeHarness, stripAnsi, type QqOutputEvent } from '@dda/core';
+import {
+  assertDistributionAllowed,
+  assertPluginInstallAllowed,
+  collectQrArt,
+  describeEvent,
+  installCatalogPlugin,
+  installWithRegistryFallback,
+  parseQqLine,
+  probeHarness,
+  readQqEntry,
+  registryPlan,
+  stripAnsi,
+  type QqOutputEvent,
+} from '@dda/core';
 import {
   createDshCli,
   dshBinJs,
@@ -9,9 +24,18 @@ import {
   type ChildHandle,
   type DshCli,
 } from '@dda/adapters';
-import { BASELINE, DdaError, ERROR_CODES, type HealthReport, type PluginState } from '@dda/spec';
+import {
+  BASELINE,
+  DdaError,
+  ERROR_CODES,
+  PERSONAL_QQ_ADAPTER,
+  QQ_PLUGIN_DISTRIBUTION,
+  type HealthReport,
+  type PluginState,
+} from '@dda/spec';
 
 import type { Container } from './container';
+import { findMarketEntryBySpec } from './market-catalog';
 
 export interface HarnessStatus {
   running: boolean;
@@ -204,13 +228,87 @@ export class HarnessService {
     return (await this.getCli()).listPlugins(BASELINE.dsh.profile);
   }
 
-  async installQqPlugin(): Promise<void> {
-    return (await this.getCli()).addPlugin(BASELINE.dsh.profile, `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`);
+  /**
+   * P-10 + D03：官方插件的唯一安装入口。9 步编排里第 1 步就是 compat 门禁，
+   * 之后才是 precheck/spec/registry/install/复核，第 7–9 步缺证据时明确记 unverified。
+   */
+  private async installGated(spec: string, allow: { catalog: boolean; adapter: boolean }): Promise<void> {
+    assertPluginInstallAllowed({
+      matrix: this.container.matrix,
+      spec,
+      dshVersion: BASELINE.dsh.version,
+      catalogSpecs: allow.catalog ? [spec] : [],
+      ...(allow.adapter ? { adapterSpecs: [spec] } : {}),
+    });
+    if (allow.catalog) assertDistributionAllowed(QQ_PLUGIN_DISTRIBUTION, 'online-install');
+
+    const cli = await this.getCli();
+    const entry = allow.catalog ? findMarketEntryBySpec(spec) : undefined;
+    if (entry !== undefined) {
+      const outcome = await installCatalogPlugin(
+        { entry, matrix: this.container.matrix, dshVersion: BASELINE.dsh.version },
+        {
+          precheck: async () => {
+            await access(this.container.paths.dshHome, fsConstants.W_OK);
+          },
+          addPlugin: (layer) => cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url }),
+          listPlugins: () => cli.listPlugins(BASELINE.dsh.profile),
+          dumpConfig: () => cli.dumpConfig(BASELINE.dsh.profile),
+          checkConfig: async () => this.checkPluginConfig(),
+          log: (line) => {
+            void this.container.logger.info('plugin', line);
+          },
+        },
+      );
+      await this.container.logger.info(
+        'plugin',
+        `installed ${spec} from ${outcome.registry.id}; connectivity=${outcome.connectivity}`,
+      );
+      return;
+    }
+
+    // 适配插件（个人 QQ）不在 catalog 里：仍走同一门禁 + 同一 registry 回退。
+    const result = await installWithRegistryFallback({
+      spec,
+      plan: registryPlan(),
+      log: (line) => {
+        void this.container.logger.info('plugin', line);
+      },
+      install: (layer) => cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url }),
+    });
+    await this.container.logger.info('plugin', `installed ${spec} from ${result.registry.id}`);
   }
 
-  /** 给其它模块（个人 QQ 适配插件）用：只走官方 `plugin add/remove`，不改 profile 文件。 */
-  async installPlugin(spec: string): Promise<void> {
-    return (await this.getCli()).addPlugin(BASELINE.dsh.profile, spec);
+  /** 步骤 8：只检查「字段存在且格式合法」，不代表已生效。 */
+  private async checkPluginConfig(): Promise<string[]> {
+    const patchPath = join(
+      this.container.paths.dshHome,
+      'profiles',
+      BASELINE.dsh.profile,
+      'cordis.patch.yml',
+    );
+    if (!(await fileExists(patchPath))) return ['profile 补丁文件不存在'];
+    const entry = readQqEntry(await readFile(patchPath, 'utf8'));
+    if (!entry.present) return ['补丁中没有 im-qqbot 条目'];
+    const problems: string[] = [];
+    const access = entry.config.access as { c2cMode?: unknown; groupMode?: unknown } | undefined;
+    if (access === undefined || typeof access !== 'object') problems.push('缺少 access 配置');
+    else if (typeof access.c2cMode !== 'string' || typeof access.groupMode !== 'string') {
+      problems.push('access.c2cMode / access.groupMode 缺失或类型不对');
+    }
+    return problems;
+  }
+
+  async installQqPlugin(): Promise<void> {
+    return this.installGated(`@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`, {
+      catalog: true,
+      adapter: false,
+    });
+  }
+
+  /** 个人 QQ 适配插件：白名单内唯一允许代装的第三方插件（不属于 compat 的三元组）。 */
+  async installAdapterPlugin(): Promise<void> {
+    return this.installGated(PERSONAL_QQ_ADAPTER.spec, { catalog: false, adapter: true });
   }
 
   async removePlugin(name: string): Promise<void> {

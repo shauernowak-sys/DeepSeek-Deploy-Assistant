@@ -40,6 +40,7 @@ function recordingCli() {
     version: async () => ({ id: 'dsh', installed: true, version: '0.2.0-rc.2' }),
     ensureProfile: async () => undefined,
     listPlugins: async () => [{ name: '@tencent-connect/dsh-qqbot', version: '0.5.5', installed: true }],
+    dumpConfig: async () => '[]',
     addPlugin,
     removePlugin: async () => undefined,
     launchWeb: async () => {
@@ -70,7 +71,9 @@ describe('官方 QQ 插件安装：分发门禁 + 在线安装说明', () => {
     await install!.run(ctx(logs));
 
     expect(addPlugin).toHaveBeenCalledTimes(1);
-    expect(addPlugin).toHaveBeenCalledWith('web', '@tencent-connect/dsh-qqbot@0.5.5');
+    expect(addPlugin).toHaveBeenCalledWith('web', '@tencent-connect/dsh-qqbot@0.5.5', {
+      registry: 'https://registry.npmmirror.com/',
+    });
     const joined = logs.join('\n');
     expect(joined).toContain('仅支持在线安装');
     expect(joined).toContain('UNLICENSED');

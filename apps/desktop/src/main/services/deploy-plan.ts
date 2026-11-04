@@ -1,13 +1,17 @@
-import { mkdir } from 'node:fs/promises';
-import { join, parse } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, parse } from 'node:path';
 
 import {
   assertCombination,
   assertDistributionAllowed,
+  applyRegistrySection,
   downloadVerified,
   detectAdmin,
   freeBytes,
+  installCatalogPlugin,
+  isRegistryFallbackConfigured,
   MIN_FREE_BYTES,
+  readPluginManagerRegistry,
   satisfiesMin,
 } from '@dda/core';
 import type { Step, StepContext } from '@dda/core';
@@ -29,6 +33,8 @@ import {
 } from '@dda/adapters';
 import { BASELINE, DdaError, ERROR_CODES, QQ_PLUGIN_DISTRIBUTION, type RuntimeSelection } from '@dda/spec';
 import type { CompatMatrix, RuntimeManifest } from '@dda/spec';
+
+import { OFFICIAL_QQBOT_ENTRY } from './market-catalog';
 
 export const QQ_PLUGIN_SPEC = `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`;
 
@@ -307,6 +313,30 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         ctx.log(`profile 目录: ${join(paths.dshHome, 'profiles', BASELINE.dsh.profile)}`);
       },
     },
+    {
+      id: 'configure-registry',
+      title: '配置插件下载源（镜像优先、官方兜底）',
+      weight: 1,
+      async run(ctx: StepContext) {
+        // P-8：只在环境里设 npm_config_registry=镜像，会让 Harness 自己的回退计划失效
+        // （pnpm 的 registry 既非官方源、又不在 fallback 列表里 → 只问它自己）。
+        const patchPath = join(paths.dshHome, 'profiles', BASELINE.dsh.profile, 'cordis.patch.yml');
+        await mkdir(dirname(patchPath), { recursive: true });
+        const existing = (await fileExists(patchPath)) ? await readFile(patchPath, 'utf8') : '[]\n';
+        const next = applyRegistrySection(existing);
+        if (next !== existing) await writeFile(patchPath, next, 'utf8');
+
+        const config = readPluginManagerRegistry(next);
+        if (!isRegistryFallbackConfigured(config)) {
+          throw new DdaError(
+            ERROR_CODES.E_MANIFEST_INVALID,
+            '插件下载源配置写入后回读不一致',
+            '重试该步骤；若反复失败请导出诊断包',
+          );
+        }
+        ctx.log(`插件下载源: ${config.registry} → 兜底 ${config.fallbackRegistries.join(', ')}`);
+      },
+    },
     ...(deps.qqMode === 'personal' ? [] : [{
       id: 'install-qqbot',
       title: `安装 QQ 插件 ${BASELINE.qqbot.version}`,
@@ -322,7 +352,19 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         // Gate 4 ② 降级后：只允许在线安装；离线包/镜像/重打包在许可上不可行，先拦后装。
         assertDistributionAllowed(QQ_PLUGIN_DISTRIBUTION, 'online-install');
         ctx.log(QQ_PLUGIN_DISTRIBUTION.notice);
-        await getCli().addPlugin(BASELINE.dsh.profile, QQ_PLUGIN_SPEC);
+        // D03：部署入口与其它入口走同一套 9 步编排（第 1 步 compat 先于任何 pnpm 调用）。
+        await installCatalogPlugin(
+          { entry: OFFICIAL_QQBOT_ENTRY, matrix, dshVersion: BASELINE.dsh.version },
+          {
+            precheck: async () => {
+              await mkdir(join(paths.dshHome, 'profiles'), { recursive: true });
+            },
+            addPlugin: (layer) =>
+              getCli().addPlugin(BASELINE.dsh.profile, QQ_PLUGIN_SPEC, { registry: layer.url }),
+            listPlugins: () => getCli().listPlugins(BASELINE.dsh.profile),
+            log: (line) => ctx.log(line),
+          },
+        );
       },
     },
     {

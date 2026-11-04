@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { Catalog, CatalogEntry, CatalogOverlay, CompatMatrix } from '@dda/spec';
 import { CatalogOverlaySchema } from '@dda/spec';
 
-import { evaluateClosure } from './license-gate';
+import { evaluateClosure, normalizeSpdx } from './license-gate';
 
 /**
  * D01 索引构建链。
@@ -258,6 +258,32 @@ export function collectCatalogProblems(catalog: Catalog, matrix: CompatMatrix): 
         `${label}: 闭包含 ${[...report.denied, ...report.needsReview].map((e) => e.name).join('/')}，` +
           'license.redistributable 必须为 false',
       );
+    }
+
+    // D09：本体的 SPDX 必须与闭包里同名包一致，否则条目在宣称一个与包事实不同的许可。
+    const ownPackage = entry.depsClosure.find(
+      (pkg) => pkg.name === entry.name && pkg.version === entry.version,
+    );
+    if (ownPackage === undefined) {
+      problems.push(`${label}: 闭包里缺少插件本体，无法核对许可`);
+    } else if (normalizeSpdx(ownPackage.license) !== normalizeSpdx(entry.license.spdx)) {
+      problems.push(
+        `${label}: license.spdx=${entry.license.spdx} 与闭包内 ${ownPackage.license} 不一致`,
+      );
+    }
+
+    const acceptanceIds = new Set<string>();
+    for (const item of entry.acceptance) {
+      if (acceptanceIds.has(item.id)) problems.push(`${label}: 验收项 id 重复 ${item.id}`);
+      acceptanceIds.add(item.id);
+    }
+
+    // D09：PRD §10.2「作者/主页/仓库：可追溯」——verified 条目必须能追到人。
+    if (entry.status === 'verified' && entry.author === undefined) {
+      problems.push(`${label}: verified 条目必须填写 author`);
+    }
+    if (entry.status === 'verified' && entry.homepage === undefined && entry.repository === undefined) {
+      problems.push(`${label}: verified 条目必须有 homepage 或 repository`);
     }
   }
 

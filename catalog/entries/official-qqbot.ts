@@ -27,10 +27,26 @@ export const OFFICIAL_QQBOT_ENTRY: CatalogEntry = {
   integrity: 'sha512-E15Du9xWfWk7CffRba8/ADHV9l6t9kDQ+U3ImLmB5Ffpnbwsm5ovYtHlhiENlILaqx0r+46cSxBiqhmu9Lz+IA==',
   depsClosure: [...OFFICIAL_QQBOT_CLOSURE],
   acceptance: [
-    '在 Harness 网页端打开 QQ 插件设置页，能看到绑定二维码或「生成二维码」按钮',
-    '手机 QQ 扫码并在手机端确认授权后，绑定页显示已绑定（而不是仅提示「正在绑定」）',
-    '在已授权的群里 @ 机器人发送一条文本，收到机器人的文字回复',
-    '私聊机器人发送一张图片，收到基于图片内容的回复',
+    {
+      id: 'acc-bind-qr-visible',
+      step: '在 Harness 网页端打开 QQ 插件设置页',
+      evidence: '页面出现绑定二维码或「生成二维码」按钮（不是空白页）',
+    },
+    {
+      id: 'acc-bind-confirmed',
+      step: '用手机 QQ 扫码并在手机端确认授权',
+      evidence: '绑定页显示「已绑定」，且不再提示「正在绑定」',
+    },
+    {
+      id: 'acc-group-reply',
+      step: '在已授权的群里 @ 机器人发送一条文本',
+      evidence: '群里收到机器人对这条文本的文字回复',
+    },
+    {
+      id: 'acc-direct-image',
+      step: '私聊机器人发送一张图片',
+      evidence: '收到基于图片内容的回复（而不是「不支持图片」或超时）',
+    },
   ],
   en: {
     name: 'Official QQ bot',

@@ -83,6 +83,20 @@ export const CatalogSafetySchema = z
   })
   .strict();
 
+/**
+ * 验收方式必须**可执行**（PRD §10.2）：一条验收 = 用户做的一步 + 可观测到的证据。
+ * 只写「功能正常」这类无法判定的描述会被 schema 拒绝（step/evidence 都要有实质内容）。
+ */
+export const CatalogAcceptanceSchema = z
+  .object({
+    id: z.string().regex(/^acc-[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must look like acc-<slug>'),
+    step: z.string().min(6).max(200),
+    evidence: z.string().min(6).max(200),
+  })
+  .strict();
+
+export type CatalogAcceptance = z.infer<typeof CatalogAcceptanceSchema>;
+
 export const CatalogEntrySchema = z
   .object({
     /** 稳定标识，不用包名（包名可能变）。 */
@@ -103,7 +117,7 @@ export const CatalogEntrySchema = z
     integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+={0,2}$/, 'must be a sha512 SRI string'),
     depsClosure: z.array(CatalogClosurePackageSchema).min(1),
     /** 可执行的验收方式（PRD 5.3），至少一条。 */
-    acceptance: z.array(z.string().min(1)).min(1),
+    acceptance: z.array(CatalogAcceptanceSchema).min(1),
     en: CatalogEnSchema,
     zh: CatalogZhSchema,
     category: z.string().min(1),
@@ -138,7 +152,7 @@ export const CatalogOverlayEntrySchema = z
     license: CatalogLicenseSchema,
     integrity: z.string().min(1),
     depsClosure: z.array(DepsClosureEntrySchema).min(1),
-    acceptance: z.array(z.string().min(1)).min(1),
+    acceptance: z.array(CatalogAcceptanceSchema).min(1),
     zh: CatalogZhSchema,
     category: z.string().min(1),
     labels: z.array(z.string()),

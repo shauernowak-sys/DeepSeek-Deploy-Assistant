@@ -70,7 +70,7 @@ export function loadMatrix(raw: unknown): CompatMatrix {
  */
 export function assertCombination(
   matrix: CompatMatrix,
-  target: { dsh: string; qqbot: string; node: string },
+  target: { dsh: string; qqbot: string; node?: string },
 ): CompatEntry {
   const entry = matrix.entries.find((e) => e.dsh === target.dsh && e.qqbot === target.qqbot);
   if (!entry) {
@@ -87,7 +87,7 @@ export function assertCombination(
       entry.note ?? '等待兼容性验证',
     );
   }
-  if (!satisfiesMin(target.node, entry.node.replace(/^>=\s*/, ''))) {
+  if (target.node !== undefined && !satisfiesMin(target.node, entry.node.replace(/^>=\s*/, ''))) {
     throw new DdaError(
       ERROR_CODES.E_VERSION_UNSUPPORTED,
       `Node ${target.node} 不满足组合 ${entry.id} 的要求 ${entry.node}`,

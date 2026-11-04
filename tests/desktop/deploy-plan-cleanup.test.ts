@@ -27,6 +27,7 @@ async function buildPlan() {
       await mkdir(join(paths.dshHome, 'profiles', profile), { recursive: true });
     },
     listPlugins: async () => [],
+    dumpConfig: async () => '[]',
     addPlugin: async (profile, spec) => {
       calls.push(`addPlugin:${profile}:${spec}`);
     },

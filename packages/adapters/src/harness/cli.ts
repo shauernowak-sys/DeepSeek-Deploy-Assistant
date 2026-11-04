@@ -34,7 +34,9 @@ export interface DshCli {
   version(): Promise<RuntimeInfo>;
   ensureProfile(profile: string): Promise<void>;
   listPlugins(profile: string): Promise<PluginState[]>;
-  addPlugin(profile: string, spec: string): Promise<void>;
+  /** 组合树转储：用于「已加载」复核（步骤 7）。 */
+  dumpConfig(profile: string): Promise<string>;
+  addPlugin(profile: string, spec: string, options?: { registry?: string }): Promise<void>;
   removePlugin(profile: string, name: string): Promise<void>;
   launchWeb(
     profile: string,
@@ -74,11 +76,18 @@ export function createDshCli(options: DshEnvOptions): DshCli {
       return parsePluginList(stdout);
     },
 
-    async addPlugin(profile, spec) {
+    async dumpConfig(profile) {
+      const { stdout } = await run(['--profile', profile, '--dump-config'], 120_000);
+      return stdout;
+    },
+
+    async addPlugin(profile, spec, options) {
       if (profile === 'desktop') {
         throw new DdaError(ERROR_CODES.E_PROFILE_OWNED_BY_DESKTOP, 'desktop profile 由官方桌面端独占', '本工具不会修改它');
       }
-      await run(['plugin', '--profile', profile, 'add', spec], 30 * 60_000);
+      // `--registry=` 会被 dsh 用于预检查询，并原样转发给 pnpm（实测 0.2.0-rc.2）。
+      const registryArgs = options?.registry === undefined ? [] : [`--registry=${options.registry}`];
+      await run(['plugin', '--profile', profile, 'add', spec, ...registryArgs], 30 * 60_000);
     },
 
     async removePlugin(profile, name) {
