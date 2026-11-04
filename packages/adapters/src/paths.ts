@@ -10,6 +10,7 @@ export interface AppPaths {
   harnessDir: string;
   dshHome: string;
   stateTasks: string;
+  stateBackups: string;
   logs: string;
   downloads: string;
   licenses: string;
@@ -25,6 +26,7 @@ export function appPaths(localAppData: string): AppPaths {
     harnessDir: join(root, 'harness', BASELINE.dsh.version),
     dshHome: join(root, 'dsh-home'),
     stateTasks: join(root, 'state', 'tasks'),
+    stateBackups: join(root, 'state', 'backups'),
     logs: join(root, 'logs'),
     downloads: join(root, 'cache', 'downloads'),
     licenses: join(root, 'licenses'),

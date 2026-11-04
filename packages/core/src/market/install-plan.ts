@@ -3,6 +3,7 @@ import type { CatalogEntry, CompatMatrix, PluginState } from '@dda/spec';
 
 import { assertCombination } from '../compat/matrix';
 import { parseComposedDump } from '../api/verify';
+import { planPluginChange, type PluginChangeAction } from './version-plan';
 import { installWithRegistryFallback, registryPlan, type RegistryLayer } from './registries';
 import { extractTarballHosts, formatTarballHosts, type TarballHostReport } from './source-report';
 
@@ -42,6 +43,10 @@ export type ConnectivityVerdict = 'verified' | 'unverified';
 export interface PluginInstallOutcome {
   spec: string;
   registry: RegistryLayer;
+  /** D07：本次实际执行的动作（同版本时为 `none`，不发起任何 pnpm 调用）。 */
+  action: PluginChangeAction;
+  /** 版本切换前生成的 profile 备份目录（D08）。 */
+  backupDir?: string;
   steps: PluginInstallStepOutcome[];
   /** D06：本次安装实际从哪些 host 下载 tarball（拿不到时 total=0）。 */
   tarballHosts: TarballHostReport;
@@ -55,6 +60,10 @@ export interface PluginInstallDeps {
   precheck: () => Promise<void>;
   /** 第 5 步：带 registry 调用官方安装命令；返回其输出（用于 D06 记录 tarball host）。 */
   addPlugin: (layer: RegistryLayer) => Promise<string | void>;
+  /** D07：版本切换（remove+add）时先卸载；同版本路径不会调用。 */
+  removePlugin?: () => Promise<void>;
+  /** D08：版本切换前备份 profile，返回备份目录。缺少它时拒绝做版本切换。 */
+  backupProfile?: () => Promise<string>;
   /** 第 6 步。 */
   listPlugins: () => Promise<PluginState[]>;
   /** 第 6 步可选：profile `package.json` 里该依赖的版本。 */
@@ -77,6 +86,12 @@ export interface PluginInstallRequest {
   matrix: CompatMatrix;
   dshVersion: string;
   nodeVersion?: string;
+  /** D07：profile 里已安装的版本（同版本短路、降级确认都依赖它）。 */
+  installedVersion?: string;
+  /** 用户已在界面确认降级（两次确认的第二道）。 */
+  allowDowngrade?: boolean;
+  /** 安装目标名（用于校验 installedVersion 是否属于同一个包）。 */
+  name?: string;
 }
 
 /**
@@ -191,6 +206,51 @@ export async function installCatalogPlugin(
   let connectivity: ConnectivityVerdict = 'unverified';
   let connectivityDetail = '未执行连通探测';
   let installOutput = '';
+  let backupDir: string | undefined;
+  let replaced = false;
+
+  // D07：先判定动作（同版本 / 安装 / 升级 / 降级）。降级未确认在这里就拒绝，不进入任何安装步骤。
+  const change = planPluginChange({
+    name: request.name ?? entry.name,
+    ...(request.installedVersion === undefined ? {} : { installedVersion: request.installedVersion }),
+    target: { name: entry.name, version: entry.version },
+    matrix,
+    dshVersion: request.dshVersion,
+    ...(request.nodeVersion === undefined ? {} : { nodeVersion: request.nodeVersion }),
+    ...(request.allowDowngrade === undefined ? {} : { allowDowngrade: request.allowDowngrade }),
+    // 兼容门禁统一由第 1 步执行，错误消息才会带步号。
+    assertCombo: false,
+  });
+
+  const plannedTiming = deps.plan ?? registryPlan();
+
+  if (change.action === 'none') {
+    // 同版本：不发起任何 pnpm 调用（不重装、不校验 registry、不动 profile）。
+    log(`已安装 ${entry.name}@${entry.version}，同版本不再重复安装`);
+    return {
+      spec: marketInstallTarget(entry.name, entry).spec,
+      registry: plannedTiming[0]!,
+      action: 'none',
+      steps: [],
+      tarballHosts: { total: 0, hosts: [] },
+      connectivity: 'unverified',
+      connectivityDetail: '已安装同版本，未执行任何安装动作',
+    };
+  }
+
+  if (change.method === 'remove-then-add') {
+    if (deps.backupProfile === undefined || deps.removePlugin === undefined) {
+      throw new DdaError(
+        ERROR_CODES.E_PROCESS_FAILED,
+        `第 5 步（install）无法执行版本切换：缺少 profile 备份或卸载能力`,
+        '版本切换必须先备份 profile（D08），请升级本软件或改用完整部署流程',
+      );
+    }
+    log(
+      `版本切换：${change.installedVersion ?? '(未知)'} → ${entry.version}（${change.action}）；` +
+        change.warnings.join('；'),
+    );
+  }
 
   // 第 1 步：compat 门禁。必须在任何 pnpm 调用之前。
   await runStep(
@@ -246,6 +306,14 @@ export async function installCatalogPlugin(
   await runStep(
     PLUGIN_INSTALL_STEPS[4]!,
     async () => {
+      if (change.method === 'remove-then-add' && !replaced) {
+        // D08：先备份、再卸载；备份与卸载各只做一次（重试该步不会重复执行）。
+        backupDir ??= await deps.backupProfile!();
+        log(`已备份 profile：${backupDir}`);
+        await deps.removePlugin!();
+        replaced = true;
+        log(`已卸载旧版本 ${change.installedVersion ?? '(未知)'}，准备安装 ${entry.version}`);
+      }
       const result = await installWithRegistryFallback({
         spec: installTarget.spec,
         plan,
@@ -356,6 +424,8 @@ export async function installCatalogPlugin(
   return {
     spec: installTarget.spec,
     registry: usedRegistry ?? plan[0]!,
+    action: change.action,
+    ...(backupDir === undefined ? {} : { backupDir }),
     steps: outcomes,
     tarballHosts: extractTarballHosts(installOutput),
     connectivity,

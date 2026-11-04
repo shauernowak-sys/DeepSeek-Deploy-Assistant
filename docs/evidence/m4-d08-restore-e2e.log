@@ -1,0 +1,14 @@
+﻿[d08] 1) 安装
+[d08]    备份前 list: └── @tencent-connect/dsh-qqbot@0.5.5
+[d08] 2) 备份（产品代码 createProfileBackup）
+[d08]    备份目录: C:\Users\LIU\AppData\Local\Temp\dda-d08-e2e-yf4kmV\state\backups\plugin-2026-11-04T13-57-20-475Z
+[d08]    文件: package.json, pnpm-workspace.yaml, cordis.patch.yml, pnpm-lock.yaml；缺失: (无)
+[d08] 3) 卸载
+[d08]    卸载后 list: (空)
+[d08] 4) 恢复（产品代码 restoreProfileBackup）
+[d08]    已还原: package.json, pnpm-workspace.yaml, cordis.patch.yml, pnpm-lock.yaml
+[d08]    重建参数: install --offline --frozen-lockfile --force
+[d08] 5) 按还原后的 lockfile 重建依赖
+[d08] 6) 再次 list 并比较
+[d08]    恢复后 list: └── @tencent-connect/dsh-qqbot@0.5.5
+[d08] 结果: PASS（与备份前一致）

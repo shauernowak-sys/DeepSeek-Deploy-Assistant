@@ -35,11 +35,17 @@ async function officialSteps(cli: DshCli, runtime?: RuntimeSelection) {
 }
 
 function recordingCli() {
-  const addPlugin = vi.fn(async () => ({ code: 0, stdout: '', stderr: '' }));
+  // 有状态：D07 同版本会短路，因此"安装前未装、安装后已装"才符合真实流程。
+  let installed = false;
+  const addPlugin = vi.fn(async () => {
+    installed = true;
+    return { code: 0, stdout: '', stderr: '' };
+  });
   const cli: DshCli = {
     version: async () => ({ id: 'dsh', installed: true, version: '0.2.0-rc.2' }),
     ensureProfile: async () => undefined,
-    listPlugins: async () => [{ name: '@tencent-connect/dsh-qqbot', version: '0.5.5', installed: true }],
+    listPlugins: async () =>
+      installed ? [{ name: '@tencent-connect/dsh-qqbot', version: '0.5.5', installed: true }] : [],
     dumpConfig: async () => '[]',
     addPlugin,
     removePlugin: async () => undefined,

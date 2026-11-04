@@ -6,6 +6,7 @@ import {
   assertDistributionAllowed,
   assertPluginInstallAllowed,
   collectQrArt,
+  createProfileBackup,
   describeEvent,
   installCatalogPlugin,
   installWithRegistryFallback,
@@ -13,14 +14,18 @@ import {
   probeHarness,
   readQqEntry,
   registryPlan,
+  restoreProfileBackup,
   stripAnsi,
   type QqOutputEvent,
 } from '@dda/core';
 import {
   createDshCli,
   dshBinJs,
+  dshEnv,
   fileExists,
   loadRuntimeSelection,
+  pnpmCliJs,
+  runCommand,
   type ChildHandle,
   type DshCli,
 } from '@dda/adapters';
@@ -230,6 +235,39 @@ export class HarnessService {
   }
 
   /**
+   * D08：恢复到某个 profile 备份，并按还原后的 lockfile 重建依赖。
+   * `restoreProfileBackup` 给出必须的 pnpm 参数（含 `--force`，普通 install 会被判 up to date）。
+   */
+  async restoreProfile(backupDir: string): Promise<{ restored: string[]; plugins: PluginState[] }> {
+    const profileDir = join(this.container.paths.dshHome, 'profiles', BASELINE.dsh.profile);
+    const result = await restoreProfileBackup(backupDir, profileDir);
+
+    const runtime = await loadRuntimeSelection(this.container.paths);
+    const pnpmCli = pnpmCliJs(this.container.paths);
+    if (await fileExists(pnpmCli)) {
+      await runCommand({
+        exePath: runtime.node.exe,
+        args: [pnpmCli, ...result.rebuildArgs],
+        cwd: profileDir,
+        env: dshEnv({
+          paths: this.container.paths,
+          pnpmBinDir: join(this.container.paths.root, 'bin'),
+          registry: this.container.registry,
+          nodeExePath: runtime.node.exe,
+          proxyExclusions: this.container.childEnvExclusions,
+        }),
+        timeoutMs: 10 * 60_000,
+      });
+      await this.container.logger.info('plugin', `profile restored from ${backupDir} and dependencies rebuilt`);
+    } else {
+      await this.container.logger.warn('plugin', `pnpm 未安装，跳过依赖重建：${pnpmCli}`);
+    }
+
+    const plugins = await this.listPlugins();
+    return { restored: result.restored, plugins };
+  }
+
+  /**
    * P-10 + D03：官方插件的唯一安装入口。9 步编排里第 1 步就是 compat 门禁，
    * 之后才是 precheck/spec/registry/install/复核，第 7–9 步缺证据时明确记 unverified。
    */
@@ -246,8 +284,17 @@ export class HarnessService {
     const cli = await this.getCli();
     const entry = allow.catalog ? findMarketEntryBySpec(spec) : undefined;
     if (entry !== undefined) {
+      const profileDir = join(this.container.paths.dshHome, 'profiles', BASELINE.dsh.profile);
+      const installed = (await cli.listPlugins(BASELINE.dsh.profile)).find((plugin) => plugin.name === entry.name);
       const outcome = await installCatalogPlugin(
-        { entry, matrix: this.container.matrix, dshVersion: BASELINE.dsh.version },
+        {
+          entry,
+          matrix: this.container.matrix,
+          dshVersion: BASELINE.dsh.version,
+          ...(installed?.version === undefined ? {} : { installedVersion: installed.version }),
+          // UI 尚未提供降级二次确认（D02）；在此之前降级一律拒绝。
+          allowDowngrade: false,
+        },
         {
           precheck: async () => {
             await access(this.container.paths.dshHome, fsConstants.W_OK);
@@ -255,6 +302,14 @@ export class HarnessService {
           addPlugin: async (layer) => {
             const result = await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url });
             return `${result.stdout}\n${result.stderr}`;
+          },
+          removePlugin: () => cli.removePlugin(BASELINE.dsh.profile, entry.name),
+          backupProfile: async () => {
+            const backup = await createProfileBackup({
+              profileDir,
+              backupsRoot: this.container.paths.stateBackups,
+            });
+            return backup.dir;
           },
           listPlugins: () => cli.listPlugins(BASELINE.dsh.profile),
           dumpConfig: () => cli.dumpConfig(BASELINE.dsh.profile),
@@ -266,7 +321,7 @@ export class HarnessService {
       );
       await this.container.logger.info(
         'plugin',
-        `installed ${spec} from ${outcome.registry.id}; connectivity=${outcome.connectivity}`,
+        `installed ${spec} from ${outcome.registry.id}; action=${outcome.action} connectivity=${outcome.connectivity}`,
       );
       return;
     }

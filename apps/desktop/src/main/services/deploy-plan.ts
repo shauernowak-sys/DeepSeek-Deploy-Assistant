@@ -5,6 +5,7 @@ import {
   assertCombination,
   assertDistributionAllowed,
   applyRegistrySection,
+  createProfileBackup,
   downloadVerified,
   detectAdmin,
   freeBytes,
@@ -375,9 +376,19 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         // Gate 4 ② 降级后：只允许在线安装；离线包/镜像/重打包在许可上不可行，先拦后装。
         assertDistributionAllowed(QQ_PLUGIN_DISTRIBUTION, 'online-install');
         ctx.log(QQ_PLUGIN_DISTRIBUTION.notice);
-        // D03：部署入口与其它入口走同一套 9 步编排（第 1 步 compat 先于任何 pnpm 调用）。
+        // D03 + D07 + D08：同一套 9 步编排；同版本短路，版本切换先备份再 remove+add。
+        const installed = (await getCli().listPlugins(BASELINE.dsh.profile)).find(
+          (plugin) => plugin.name === OFFICIAL_QQBOT_ENTRY.name,
+        );
+        const profileDir = join(paths.dshHome, 'profiles', BASELINE.dsh.profile);
         await installCatalogPlugin(
-          { entry: OFFICIAL_QQBOT_ENTRY, matrix, dshVersion: BASELINE.dsh.version },
+          {
+            entry: OFFICIAL_QQBOT_ENTRY,
+            matrix,
+            dshVersion: BASELINE.dsh.version,
+            ...(installed?.version === undefined ? {} : { installedVersion: installed.version }),
+            allowDowngrade: false,
+          },
           {
             precheck: async () => {
               await mkdir(join(paths.dshHome, 'profiles'), { recursive: true });
@@ -387,6 +398,14 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
                 registry: layer.url,
               });
               return `${result.stdout}\n${result.stderr}`;
+            },
+            removePlugin: () => getCli().removePlugin(BASELINE.dsh.profile, OFFICIAL_QQBOT_ENTRY.name),
+            backupProfile: async () => {
+              const backup = await createProfileBackup({
+                profileDir,
+                backupsRoot: paths.stateBackups,
+              });
+              return backup.dir;
             },
             listPlugins: () => getCli().listPlugins(BASELINE.dsh.profile),
             log: (line) => ctx.log(line),

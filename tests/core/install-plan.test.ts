@@ -245,6 +245,94 @@ describe('D06 tarball host 记录进入安装结果', () => {
   });
 });
 
+describe('D07/D08 版本切换与备份（同版本 / 降级 / 升级）', () => {
+  it('同版本 → 不发起任何安装调用，也不进 registry 流程', async () => {
+    const addPlugin = vi.fn(async () => '');
+    const outcome = await installCatalogPlugin(
+      { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), installedVersion: '0.5.5' },
+      deps({ addPlugin }),
+    );
+
+    expect(outcome.action).toBe('none');
+    expect(outcome.steps).toEqual([]);
+    expect(addPlugin).not.toHaveBeenCalled();
+  });
+
+  it('降级未确认 → 拒绝，错误含"当前 → 目标"，且没有任何安装动作', async () => {
+    const addPlugin = vi.fn(async () => '');
+    const error = await failureOf(
+      installCatalogPlugin(
+        { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), installedVersion: '0.5.6' },
+        deps({ addPlugin }),
+      ),
+    );
+
+    expect((error as { code?: string }).code).toBe('E_DECISION_UNCONFIRMED');
+    expect(error.message).toContain('0.5.6');
+    expect(error.message).toContain('0.5.5');
+    expect(addPlugin).not.toHaveBeenCalled();
+  });
+
+  it('升级 → 先备份、再卸载、最后安装，结果记录 action 与备份目录', async () => {
+    const events: string[] = [];
+    const outcome = await installCatalogPlugin(
+      { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), installedVersion: '0.5.4' },
+      deps({
+        backupProfile: async () => {
+          events.push('backup');
+          return 'C:/state/backups/plugin-x';
+        },
+        removePlugin: async () => {
+          events.push('remove');
+        },
+        addPlugin: async () => {
+          events.push('add');
+          return '';
+        },
+      }),
+    );
+
+    expect(outcome.action).toBe('upgrade');
+    expect(outcome.backupDir).toBe('C:/state/backups/plugin-x');
+    expect(events).toEqual(['backup', 'remove', 'add']);
+  });
+
+  it('缺少备份/卸载能力时拒绝做版本切换（不允许无备份 remove+add）', async () => {
+    const error = await failureOf(
+      installCatalogPlugin(
+        { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), installedVersion: '0.5.4' },
+        deps({ backupProfile: undefined, removePlugin: undefined }),
+      ),
+    );
+
+    expect(error.message).toContain('缺少 profile 备份或卸载能力');
+  });
+
+  it('安装步骤重试时备份只做一次、卸载只做一次', async () => {
+    let installCalls = 0;
+    const backup = vi.fn(async () => 'C:/state/backups/plugin-once');
+    const remove = vi.fn(async () => undefined);
+
+    await installCatalogPlugin(
+      { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), installedVersion: '0.5.4' },
+      deps({
+        backupProfile: backup,
+        removePlugin: remove,
+        addPlugin: async () => {
+          installCalls += 1;
+          if (installCalls === 1) throw new Error('ERR_PNPM_FETCH_503 down');
+          return '';
+        },
+        plan: [registryPlan()[0]!],
+      }),
+    );
+
+    expect(backup).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(installCalls).toBe(2);
+  });
+});
+
 describe('D03 验收⑤：成功路径与证据等级', () => {
   it('成功时前 6 步 succeeded，7–9 步缺证据记 unverified（不得伪造成功）', async () => {
     const outcome = await installCatalogPlugin(request(VERIFIED_MATRIX, '0.2.0-rc.2'), deps());
