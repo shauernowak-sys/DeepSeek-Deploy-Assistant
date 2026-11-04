@@ -180,6 +180,64 @@ export class DeployService {
   }
 
   /**
+   * §21.10「重试这一步」：只重跑当前卡住的那一步，成功后**停下**（任务保持 `paused`，
+   * 由用户点「继续」执行后续步骤）。与 `resume` 的区别是"只做这一步、先看清楚再往下走"。
+   *
+   * 三道守卫，任何一条不满足都拒绝执行（不做"猜用户想重试哪一步"）：
+   * 1. 任务已在跑 → 拒绝；
+   * 2. 任务已成功 → 拒绝（没有要重试的步骤）；
+   * 3. `stepId` 不是"第一个未完成的步骤" → 拒绝，并告诉用户该重试哪一个。
+   */
+  retryStep(taskId: string, stepId: string): Promise<{ taskId: string }> {
+    return this.serialize(async () => {
+      if (taskId !== this.taskId) {
+        throw new DdaError(ERROR_CODES.E_DECISION_REQUIRED, '任务 ID 不匹配，已拒绝重试', '请重新检测环境后再部署');
+      }
+      if (this.running) {
+        throw new DdaError(ERROR_CODES.E_DECISION_REQUIRED, '任务正在运行，不能同时重试某一步', '等当前步骤结束后再试');
+      }
+      const data = await Journal.load(this.journalPath());
+      if (!data) {
+        throw new DdaError(
+          ERROR_CODES.E_DECISION_REQUIRED,
+          '没有可重试的任务记录',
+          '请先完成「环境检测」并按推荐方案确认后再部署',
+        );
+      }
+      const next = data.steps.find((step) => step.status !== 'succeeded' && step.status !== 'skipped');
+      if (next === undefined) {
+        throw new DdaError(
+          ERROR_CODES.E_DECISION_REQUIRED,
+          '所有步骤都已完成，没有需要重试的步骤',
+          '若要重新校验整个部署，请点「重新部署（修复）」',
+        );
+      }
+      if (next.id !== stepId) {
+        throw new DdaError(
+          ERROR_CODES.E_DECISION_REQUIRED,
+          `当前卡住的步骤是「${next.title}」，不是「${stepId}」`,
+          `请重试「${next.title}」；已完成的步骤不会重跑`,
+        );
+      }
+
+      const runtime = await loadRuntimeSelection(this.deps.container.paths);
+      const qqMode = await loadDeploymentQqMode(this.deps.container.paths).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return 'official' as const;
+        throw error;
+      });
+      this.controlHandle = createTaskControl();
+      const handle = this.controlHandle;
+      this.running = this.execute(handle.control, runtime, qqMode, next.id)
+        .catch((error: unknown) => this.failUnexpected(error))
+        .finally(() => {
+          this.running = undefined;
+          this.controlHandle = undefined;
+        });
+      return { taskId: this.taskId };
+    });
+  }
+
+  /**
    * A journal left at `running` means the previous process died mid-step. Nothing is running
    * now, so that stored status is a lie: the UI would disable both "deploy" and "rollback"
    * forever and a click on "pause" would report a pause that never happened.
@@ -359,6 +417,7 @@ export class DeployService {
     control: ReturnType<typeof createTaskControl>['control'],
     runtime: RuntimeSelection,
     qqMode: 'official' | 'personal',
+    stopAfterStepId?: string,
   ): Promise<TaskSummary> {
     const { container } = this.deps;
     const journal = new Journal(this.journalPath());
@@ -369,6 +428,7 @@ export class DeployService {
       journal,
       resume: true,
       control,
+      ...(stopAfterStepId === undefined ? {} : { stopAfterStepId }),
       log: (m) => container.logger.info('deploy', m),
       onEvent: this.deps.onEvent,
     });

@@ -53,6 +53,8 @@ export interface TaskSummary {
   error?: string;
   /** true when the pause/cancel came from the user rather than from a failure. */
   pausedByUser?: boolean;
+  /** `user` = 用户点暂停；`step-retry` = 单步重试成功后按设计停在后续步骤之前。 */
+  pausedReason?: 'user' | 'step-retry';
 }
 
 export interface StepState {

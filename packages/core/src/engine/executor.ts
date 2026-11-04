@@ -45,6 +45,11 @@ export interface ExecuteOptions {
   /** Resume an existing journal: steps already `succeeded`/`skipped` are not re-run. */
   resume?: boolean;
   control?: TaskControl;
+  /**
+   * §21.10「重试这一步」：跑到该步骤**成功后立即停下**，把任务留在 `paused`，
+   * 后续步骤交给用户点「继续」。用于"只想重跑失败的那一步、先看清楚再往下走"的场景。
+   */
+  stopAfterStepId?: string;
 }
 
 export interface ExecuteResult {
@@ -88,18 +93,20 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
 
   data.status = 'running';
   data.pausedByUser = undefined;
+  data.pausedReason = undefined;
   data.error = undefined;
   await journal.save(data);
 
   let completedWeight = 0;
   const finish = async (
     status: TaskSummary['status'],
-    extra: { error?: string; pausedByUser?: boolean } = {},
+    extra: { error?: string; pausedByUser?: boolean; pausedReason?: 'user' | 'step-retry' } = {},
   ): Promise<ExecuteResult> => {
     data.status = status;
     data.finishedAt = new Date().toISOString();
     if (extra.error !== undefined) data.error = extra.error;
     if (extra.pausedByUser !== undefined) data.pausedByUser = extra.pausedByUser;
+    if (extra.pausedReason !== undefined) data.pausedReason = extra.pausedReason;
     await journal.save(data);
     return { summary: journal.toSummary(data), data };
   };
@@ -122,7 +129,7 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
       return finish('cancelled', { error: '用户取消任务' });
     }
     if (control?.pauseRequested) {
-      return finish('paused', { pausedByUser: true });
+      return finish('paused', { pausedByUser: true, pausedReason: 'user' });
     }
 
     state.status = 'running';
@@ -165,6 +172,10 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
           progress: completedWeight / weight,
           message: state.message,
         });
+        if (options.stopAfterStepId === step.id) {
+          await log(`[${step.id}] 单步重试完成（已是目标状态），按要求停在后续步骤之前`);
+          return finish('paused', { pausedByUser: false, pausedReason: 'step-retry' });
+        }
         continue;
       }
 
@@ -210,6 +221,10 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
         progress: completedWeight / weight,
         message: step.title,
       });
+      if (options.stopAfterStepId === step.id) {
+        await log(`[${step.id}] 单步重试成功，停在后续步骤之前（任务保持 paused，可点「继续」）`);
+        return finish('paused', { pausedByUser: false, pausedReason: 'step-retry' });
+      }
     } catch (error) {
       state.status = 'failed';
       state.message = error instanceof Error ? error.message : String(error);

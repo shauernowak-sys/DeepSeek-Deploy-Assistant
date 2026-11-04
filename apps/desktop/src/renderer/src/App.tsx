@@ -19,6 +19,7 @@ interface TaskSummary {
   error?: string;
   startedAt?: string;
   pausedByUser?: boolean;
+  pausedReason?: 'user' | 'step-retry';
 }
 
 interface ComponentCheckView {
@@ -351,6 +352,7 @@ type Api = {
   decideEnv: (preferences?: Record<string, unknown>) => Promise<DecisionView>;
   startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean; qqMode?: 'official' | 'personal' }) => Promise<{ taskId: string }>;
   resumeDeploy: (taskId: string) => Promise<{ taskId: string }>;
+  retryStep: (taskId: string, stepId: string) => Promise<{ taskId: string }>;
   taskStatus: (taskId: string) => Promise<TaskSummary | undefined>;
   pauseDeploy: (taskId: string) => Promise<TaskSummary | undefined>;
   cancelPreview: (taskId: string) => Promise<CancelPreview>;
@@ -703,6 +705,7 @@ export function App(): JSX.Element {
       mergeTask(current);
     }
     await refreshInfo();
+    return current;
   };
 
   const deploy = () =>
@@ -733,6 +736,22 @@ export function App(): JSX.Element {
       if (!task) return;
       await api.resumeDeploy(task.taskId);
       void waitForSettled(task.taskId).catch((e: unknown) => setError(readableError(e)));
+    });
+
+  /** §21.10：只重跑当前卡住的那一步，成功后停下（任务保持 paused），不自动往下走。 */
+  const retryStep = (stepId: string) =>
+    run(`retry-step:${stepId}`, async () => {
+      if (!task) return;
+      await api.retryStep(task.taskId, stepId);
+      const summary = await waitForSettled(task.taskId).catch((e: unknown) => {
+        setError(readableError(e));
+        return undefined;
+      });
+      if (summary?.status === 'paused' && summary.pausedReason === 'step-retry') {
+        setNotice('这一步已重试成功（后面未再执行）。确认没问题后点“继续”，从下一步接着装。');
+      } else if (summary?.status === 'failed') {
+        setError(`重试仍失败：${summary.error ?? '未知原因'}`);
+      }
     });
 
   const pause = () =>
@@ -951,13 +970,15 @@ export function App(): JSX.Element {
 
       {paused && (
         <div className="banner warn">
-          已暂停（你主动暂停）。已完成 {completedSteps} / {steps.length} 步，点“继续”从下一步开始，已完成的步骤不会重跑。
+          {task?.pausedReason === 'step-retry'
+            ? `这一步已重试成功，任务停在后续步骤之前。已完成 ${completedSteps} / ${steps.length} 步；确认没有问题后点“继续”。`
+            : `已暂停（你主动暂停）。已完成 ${completedSteps} / ${steps.length} 步，点“继续”从下一步开始，已完成的步骤不会重跑。`}
         </div>
       )}
       {failed && (
         <div className="banner bad">
-          部署失败：{task?.error ?? '未知原因'}。已完成 {completedSteps} / {steps.length} 步。失败不等于暂停：可以点“重试失败步骤”
-          从失败的那一步继续，或先点“回滚本次创建…”清理本次部署产物。
+          部署失败：{task?.error ?? '未知原因'}。已完成 {completedSteps} / {steps.length} 步。失败不等于暂停：可以点失败步骤上的
+          “重试这一步”只重跑它（成功后停下），或点“重试失败步骤”一步到位继续；也可以先点“回滚本次创建…”清理本次部署产物。
         </div>
       )}
       {notice && <div className="banner ok">{notice}</div>}
@@ -1249,6 +1270,17 @@ export function App(): JSX.Element {
                 <span>
                   {s.title}
                   {s.message && <div className="muted">{s.message}</div>}
+                  {s.status === 'failed' && (
+                    <div className="row">
+                      <button
+                        onClick={() => retryStep(s.id)}
+                        disabled={Boolean(busy) || running}
+                        title="只重跑这一步；成功后停下，由你决定是否继续"
+                      >
+                        {busy === `retry-step:${s.id}` ? '重试中…' : '重试这一步'}
+                      </button>
+                    </div>
+                  )}
                 </span>
               </li>
             ))}

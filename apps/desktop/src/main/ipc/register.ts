@@ -25,6 +25,7 @@ import {
   SnowLumaVerifyInstallSchema,
   TaskCancelSchema,
   TaskIdSchema,
+  TaskRetryStepSchema,
   TaskRollbackSchema,
   TaskStartSchema,
   BASELINE,
@@ -268,6 +269,12 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle('task:resume', async (_event, raw: unknown) => {
     const { taskId } = TaskIdSchema.parse(raw);
     return ctx.deploy.resume(taskId);
+  });
+
+  // §21.10：只重跑当前卡住的那一步，成功后停下（任务保持 paused），由用户决定是否继续。
+  ipcMain.handle('task:retry-step', async (_event, raw: unknown) => {
+    const { taskId, stepId } = TaskRetryStepSchema.parse(raw);
+    return ctx.deploy.retryStep(taskId, stepId);
   });
 
   ipcMain.handle('task:status', async (_event, raw: unknown) => {

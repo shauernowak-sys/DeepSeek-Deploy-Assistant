@@ -13,6 +13,11 @@ export interface JournalData {
   error?: string;
   /** true when the last pause/cancel was requested by the user (not a failure). */
   pausedByUser?: boolean;
+  /**
+   * 为什么会停在 `paused`。`user` = 用户点暂停；`step-retry` = 单步重试成功后按设计停在
+   * 后续步骤之前。两者都不算失败，但文案必须不同（不能把"重试成功"说成"你暂停了"）。
+   */
+  pausedReason?: 'user' | 'step-retry';
   steps: StepState[];
   /** Everything created by this task, so rollback only removes our own artifacts. */
   created: string[];
@@ -48,6 +53,7 @@ export class Journal {
       finishedAt: data.finishedAt,
       error: data.error,
       pausedByUser: data.pausedByUser,
+      pausedReason: data.pausedReason,
     };
   }
 }

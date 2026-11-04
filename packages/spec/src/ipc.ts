@@ -57,6 +57,17 @@ export const TaskRollbackSchema = z
 export const DiagExportSchema = z.object({ confirmed: z.boolean() }).strict();
 
 /**
+ * §21.10「重试这一步」：只重跑当前卡住的那一步，成功后停下等用户「继续」。
+ * 与 `task:resume` 的区别在于"不自动往下走"，所以必须明确带上 stepId。
+ */
+export const TaskRetryStepSchema = z
+  .object({
+    taskId: z.string().min(1),
+    stepId: z.string().min(1),
+  })
+  .strict();
+
+/**
  * §21.10「回到上一可用」：恢复 profile 备份会覆盖 profile 的声明文件并重建依赖，
  * 因此和 rollback 一样必须显式 `confirmed: true`；`id` 省略表示"最近一份"。
  */

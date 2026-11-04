@@ -13,6 +13,7 @@ const api = {
   startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean; qqMode?: 'official' | 'personal' }) =>
     ipcRenderer.invoke('task:start', { scenario: 'full-deploy', ...input }),
   resumeDeploy: (taskId: string) => ipcRenderer.invoke('task:resume', { taskId }),
+  retryStep: (taskId: string, stepId: string) => ipcRenderer.invoke('task:retry-step', { taskId, stepId }),
   taskStatus: (taskId: string) => ipcRenderer.invoke('task:status', { taskId }),
   pauseDeploy: (taskId: string) => ipcRenderer.invoke('task:pause', { taskId }),
   cancelPreview: (taskId: string) => ipcRenderer.invoke('task:cancel-preview', { taskId }),
