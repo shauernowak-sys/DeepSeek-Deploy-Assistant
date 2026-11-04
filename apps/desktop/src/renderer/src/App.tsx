@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { QQ_PLUGIN_DISTRIBUTION } from '@dda/spec';
 
@@ -532,8 +532,7 @@ export function App(): JSX.Element {
   const [cancelPreview, setCancelPreview] = useState<CancelPreview>();
   const [rollbackPreview, setRollbackPreview] = useState<RollbackPreviewView>();
   const [recoveryPreview, setRecoveryPreview] = useState<ProfileRecoveryPreviewView>();
-  const [selectedBackup, setSelectedBackup] = useState<string>();
-  const [cleanupOnCancel, setCleanupOnCancel] = useState(true);
+  const [selectedBackup, setSelectedBackup] = useState<string>();  const [cleanupOnCancel, setCleanupOnCancel] = useState(true);
   const [diagPreview, setDiagPreview] = useState<DiagPreview>();
   const [diagResult, setDiagResult] = useState<string>();
   const [qqStatus, setQqStatus] = useState<QqStatusView>();
@@ -658,6 +657,80 @@ export function App(): JSX.Element {
       setBusy(undefined);
     }
   }, []);
+
+  /**
+   * §21.12 键盘可达：弹窗打开时把焦点移进去、Esc 关闭、关闭后焦点回到触发元素。
+   * `busy` 用 ref 读取，避免"每点一次按钮就重新抢焦点、把用户 Tab 的位置打乱"。
+   */
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const busyRef = useRef<string | undefined>(busy);
+  busyRef.current = busy;
+  /**
+   * 记住"弹窗打开前焦点在哪"：不能在 effect 里读 `document.activeElement`，
+   * 因为打开弹窗时按钮会被 `busy` 置灰，浏览器会先把焦点丢到 body。
+   */
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('.modal') === null) lastFocusedRef.current = target;
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+  useEffect(() => {
+    if (modal === null) return;
+    const trigger = lastFocusedRef.current;
+    const first = modalRef.current?.querySelector<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href]',
+    );
+    (first ?? modalRef.current)?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (busyRef.current !== undefined) return; // 正在执行的动作不能靠 Esc 打断
+        event.preventDefault();
+        setModal(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      // 焦点陷阱：`aria-modal="true"` 必须名副其实——Tab 不能跑到背后页面上。
+      const node = modalRef.current;
+      if (node === null) return;
+      const focusables = Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href]',
+        ),
+      );
+      if (focusables.length === 0) {
+        event.preventDefault();
+        node.focus();
+        return;
+      }
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      const active = document.activeElement;
+      if (!node.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+      if (event.shiftKey && (active === first || active === node)) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      // 弹窗节点被移除时浏览器会把焦点丢到 body，所以延后一拍再还回触发按钮。
+      if (trigger?.isConnected === true) setTimeout(() => trigger.focus(), 0);
+    };
+  }, [modal]);
 
   const scan = () =>
     run('scan', async () => {
@@ -1651,7 +1724,7 @@ export function App(): JSX.Element {
 
         {confirmApiDelete && (
           <div className="modal-backdrop">
-            <div className="modal">
+            <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
               <h2>删除 API 配置？</h2>
               <p>会删除本机加密保存的密钥，并移除软件写入 Harness 的模型配置块。你其它的 Harness 设置不会被改动。</p>
               <div className="row">
@@ -1783,7 +1856,7 @@ export function App(): JSX.Element {
 
       {modal === 'cancel' && (
         <div className="modal-backdrop">
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
             <h2>取消部署？</h2>
             <p>任务会立即停止（当前步骤完成后生效）。已完成的步骤会保留，可稍后“继续”。</p>
             <div className="modal-body">
@@ -1818,7 +1891,7 @@ export function App(): JSX.Element {
 
       {modal === 'rollback' && (
         <div className="modal-backdrop">
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
             <h2>回滚本次部署创建的内容？</h2>
             <p>
               这会<strong>永久删除</strong>本次部署任务记录在案的产物（Node 运行时、pnpm、Harness 安装目录、下载缓存等）。
@@ -1837,6 +1910,9 @@ export function App(): JSX.Element {
               <p className="muted">
                 只删除上面带 × 的路径，且必须位于本软件的管理目录内（{rollbackPreview?.roots.join('、')}）。
                 你自己的 Harness profile、API 配置、QQ 凭据与其他数据不在删除范围内；无法确认归属的路径一律保留。
+              </p>
+              <p className="muted">
+                回滚完成后可以直接点「开始部署」重新安装：下载与包缓存会保留，通常比第一次快。
               </p>
             </div>
             <div className="row">
@@ -1857,7 +1933,7 @@ export function App(): JSX.Element {
 
       {modal === 'recovery' && (
         <div className="modal-backdrop">
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
             <h2>回到上一可用状态？</h2>
             <p>
               这会用备份里的 <b>4 个 profile 声明文件</b>覆盖当前 Harness profile，并按备份的 lockfile
@@ -1921,7 +1997,7 @@ export function App(): JSX.Element {
 
       {modal === 'diag' && (
         <div className="modal-backdrop">
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
             <h2>导出诊断报告</h2>
             <p className="muted">{diagPreview?.warning}</p>
             <div className="modal-body">

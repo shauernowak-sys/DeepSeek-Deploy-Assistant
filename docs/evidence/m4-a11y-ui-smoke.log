@@ -1,0 +1,5 @@
+[a11y] electron=D:\DeepSeek-Deploy-Assistant\DeepSeek-Deploy-Assistant\node_modules\.pnpm\electron@33.4.11_supports-color@7.2.0\node_modules\electron\dist\electron.exe
+scale=1 dpr=1 lang=zh-CN focus_stops=14 ringless=0 overflow=none modal_ok=yes esc_closes=yes screenshot=m4-a11y-100.png
+scale=1.25 dpr=1.25 lang=zh-CN focus_stops=14 ringless=0 overflow=none modal_ok=yes esc_closes=yes screenshot=m4-a11y-125.png
+scale=1.5 dpr=1.5 lang=zh-CN focus_stops=14 ringless=0 overflow=none modal_ok=yes esc_closes=yes screenshot=m4-a11y-150.png
+RESULT=PASS
