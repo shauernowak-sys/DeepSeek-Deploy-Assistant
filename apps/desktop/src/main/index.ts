@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, session } from 'electron';
 import { join } from 'node:path';
 
+import { appPaths } from '@dda/adapters';
 import type { Logger } from '@dda/core';
 
 import { createContainer } from './services/container';
@@ -23,14 +24,61 @@ if (!gotLock) {
   let mainWindow: BrowserWindow | undefined;
   /** Undefined until the container exists: a startup failure must still be recorded. */
   let logger: Logger | undefined;
+  /** Set as soon as an exit has been claimed, by either the fatal path or the quit handshake. */
   let quitting = false;
+  /** Latched before the first await: two exceptions in one tick must not produce two dialogs. */
+  let fatalClaimed = false;
+  /** Set once cleanup has run, so the re-entrant `app.quit()` below is allowed through. */
+  let shutdownComplete = false;
+  let deployService: DeployService | undefined;
+  let shutdownHooks: Array<() => Promise<void> | void> = [];
+  let shutdownRun: Promise<void> | undefined;
 
   /**
-   * A failure before the window exists would otherwise leave the user with no window and no
-   * explanation. Record it (redacted), show a readable dialog, then exit.
+   * Same directory the rest of the app writes to (`paths.logs`), so `startup-error.log` shows up
+   * in "打开日志目录" and in the exported diagnostic bundle instead of an orphaned `userData` dir.
+   */
+  function startupLogDir(): string {
+    try {
+      const localAppData = process.env.LOCALAPPDATA ?? join(app.getPath('home'), 'AppData', 'Local');
+      return appPaths(localAppData).logs;
+    } catch {
+      try {
+        return app.getPath('userData');
+      } catch {
+        return '.';
+      }
+    }
+  }
+
+  function runShutdownHooks(): Promise<void> {
+    if (!shutdownRun) {
+      shutdownRun = (async () => {
+        for (const hook of shutdownHooks) {
+          try {
+            await hook();
+          } catch {
+            // One failing hook must not skip the rest.
+          }
+        }
+      })();
+    }
+    return shutdownRun;
+  }
+
+  /**
+   * Fatal path: record (redacted) → dialog → stop the work → leave with a non-zero code.
+   *
+   * Recording an exception is not the same as recovering from it. `uncaughtException` leaves
+   * Node's process state undefined, and a rejection while files are being written leaves the
+   * on-disk state unknown, so both must end the process rather than let it keep clicking.
    */
   async function reportFatal(phase: string, error: unknown): Promise<void> {
-    const record = await recordStartupFailure(app.getPath('userData'), error, phase);
+    if (fatalClaimed) return;
+    fatalClaimed = true;
+    quitting = true;
+
+    const record = await recordStartupFailure(startupLogDir(), error, phase);
     try {
       await logger?.error('startup', `${phase}: ${record.summary}`);
     } catch {
@@ -38,7 +86,7 @@ if (!gotLock) {
     }
     try {
       dialog.showErrorBox(
-        'DeepSeek Deploy Assistant 启动失败',
+        'DeepSeek Deploy Assistant 需要退出',
         record.logPath
           ? `${record.summary}\n\n已写入诊断日志（不含密钥）：\n${record.logPath}`
           : record.summary,
@@ -46,29 +94,67 @@ if (!gotLock) {
     } catch {
       // The dialog itself failing must not hide the log we just wrote.
     }
-    quitting = true;
-    app.quit();
+
+    // Bounded: a hung child process must not keep a broken app on screen.
+    await Promise.race([runShutdownHooks(), new Promise((done) => setTimeout(done, 5000))]);
+    app.exit(1);
   }
 
-  /** Runtime exceptions are logged; only "no window at all" escalates to the fatal dialog. */
-  function reportRuntime(scope: string, error: unknown): void {
+  /**
+   * Rejections that cannot be attributed to an in-flight file operation are recoverable: IPC
+   * handlers already surface their errors to the renderer, so logging is the whole response.
+   */
+  function reportRecoverable(scope: string, error: unknown): void {
     if (quitting) return;
     if (logger) {
-      void logger.error(scope, describeStartupError(error));
+      void logger.warn(scope, describeStartupError(error));
       return;
     }
-    void recordStartupFailure(app.getPath('userData'), error, scope);
-    if (!mainWindow || mainWindow.isDestroyed()) void reportFatal(scope, error);
+    void recordStartupFailure(startupLogDir(), error, scope);
   }
 
-  process.on('unhandledRejection', (reason) => reportRuntime('unhandledRejection', reason));
-  process.on('uncaughtException', (error) => reportRuntime('uncaughtException', error));
+  function fileWorkInFlight(): boolean {
+    try {
+      return deployService?.isRunning ?? false;
+    } catch {
+      return false;
+    }
+  }
+
+  process.on('uncaughtException', (error) => {
+    // Node guarantees nothing about process state after this point. Continuing would risk
+    // deleting half a directory or publishing a half-written journal.
+    void reportFatal('uncaughtException', error);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    // A rejection while a deploy/cancel/rollback is writing means the disk state is unknown.
+    if (fileWorkInFlight()) {
+      void reportFatal('unhandledRejection', reason);
+      return;
+    }
+    reportRecoverable('unhandledRejection', reason);
+  });
 
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
+  });
+
+  /**
+   * Electron does not await an async `before-quit` listener, so the handler holds the quit,
+   * runs the shutdown hooks, and only then lets `app.quit()` through on its second pass.
+   */
+  app.on('before-quit', (event) => {
+    if (shutdownComplete) return;
+    event.preventDefault();
+    quitting = true;
+    void Promise.race([runShutdownHooks(), new Promise((done) => setTimeout(done, 5000))]).then(() => {
+      shutdownComplete = true;
+      app.quit();
+    });
   });
 
   async function bootstrap(): Promise<void> {
@@ -117,6 +203,9 @@ if (!gotLock) {
 
     const broadcast = attachEventForwarding(win);
     const deploy = new DeployService({ container, onEvent: broadcast });
+    deployService = deploy;
+    // A journal stuck at `running` from a killed process must not survive into this session.
+    await deploy.reconcileInterrupted();
     const env = new EnvService(container);
     const secrets = new Secrets(container.paths.root);
     const api = new ApiService(container, secrets);
@@ -134,6 +223,14 @@ if (!gotLock) {
       },
     });
     const diagnostics = new DiagnosticsService(container, env, harness, () => deploy.summary());
+
+    // Registered here rather than at the very end, so a failure while loading the renderer still
+    // stops the child processes we spawned instead of leaving them orphaned.
+    shutdownHooks = [
+      // 明确的生命周期策略：退出时停止我们启动的 SnowLuma 与 Harness，但不删除任何文件。
+      () => deployment.dispose(),
+      () => harness.stop(),
+    ];
 
     registerIpc({
       container,
@@ -155,12 +252,6 @@ if (!gotLock) {
     } else {
       await win.loadFile(join(__dirname, '../renderer/index.html'));
     }
-
-    app.on('before-quit', async () => {
-      // 明确的生命周期策略：退出时停止我们启动的 SnowLuma 与 Harness，但不删除任何文件。
-      await deployment.dispose().catch(() => undefined);
-      await harness.stop().catch(() => undefined);
-    });
   }
 
   app
