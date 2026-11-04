@@ -26,6 +26,7 @@ export const EnvInspectSchema = z
 export const TaskStartSchema = z
   .object({
     scenario: z.literal('full-deploy'),
+    qqMode: z.enum(['official', 'personal']).default('official'),
     /** Re-verify an already successful deployment by starting from a fresh journal. */
     fresh: z.boolean().default(false),
     planId: z.string().min(8).max(128),

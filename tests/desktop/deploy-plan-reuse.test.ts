@@ -25,7 +25,7 @@ function fakeCli(version = '0.2.0-rc.2'): DshCli {
   };
 }
 
-async function fixture(runtime?: RuntimeSelection, cli = fakeCli()) {
+async function fixture(runtime?: RuntimeSelection, cli = fakeCli(), qqMode: 'official' | 'personal' = 'official') {
   const localAppData = await mkdtemp(join(tmpdir(), 'dda-reuse-plan-'));
   const paths = appPaths(localAppData);
   const manifest = RuntimeManifestSchema.parse(JSON.parse(await readFile(join(manifests, 'node.json'), 'utf8')));
@@ -38,6 +38,7 @@ async function fixture(runtime?: RuntimeSelection, cli = fakeCli()) {
     log: () => undefined,
     cli,
     runtime,
+    qqMode,
   });
   return { paths, steps };
 }
@@ -58,6 +59,14 @@ const systemRuntime = (harnessBin: string): RuntimeSelection => ({
 });
 
 describe('部署计划：复用已有运行时', () => {
+  it('个人 QQ 不安装官方机器人插件，官方路线保留插件步骤', async () => {
+    const personal = await fixture(undefined, fakeCli(), 'personal');
+    const official = await fixture(undefined, fakeCli(), 'official');
+    expect(personal.steps.map((step) => step.id)).not.toContain('install-qqbot');
+    expect(personal.steps.map((step) => step.id)).not.toContain('verify-plugin');
+    expect(official.steps.map((step) => step.id)).toContain('install-qqbot');
+    expect(official.steps.map((step) => step.id)).toContain('verify-plugin');
+  });
   it('复用系统 Node：不下载、不解压 Node，只校验可执行', async () => {
     const { steps } = await fixture({
       node: { mode: 'system', exe: process.execPath, version: process.versions.node, dir: dirname(process.execPath) },

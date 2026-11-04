@@ -87,7 +87,9 @@ describe('IPC 参数校验', () => {
   it('task:start 只接受 full-deploy 场景，且必须携带已确认的 planId', () => {
     expect(
       TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678', confirmed: true }),
-    ).toEqual({ scenario: 'full-deploy', fresh: false, planId: 'plan-12345678', confirmed: true });
+    ).toEqual({ scenario: 'full-deploy', fresh: false, planId: 'plan-12345678', confirmed: true, qqMode: 'official' });
+    expect(TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678', confirmed: true, qqMode: 'personal' }).qqMode).toBe('personal');
+    expect(() => TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678', confirmed: true, qqMode: 'invalid' })).toThrow();
     expect(() => TaskStartSchema.parse({ scenario: 'other' })).toThrow();
     expect(() => TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678', confirmed: true, extra: 1 })).toThrow();
     // 没有决策 planId / 没有显式确认，一律拒绝：UI 不得绕过门禁。

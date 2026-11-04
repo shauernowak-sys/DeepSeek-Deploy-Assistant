@@ -42,6 +42,7 @@ export interface DeployPlanDeps {
   cli?: DshCli;
   /** 门禁确认的运行时；缺省为私有运行时（兼容回滚等只读路径）。 */
   runtime?: RuntimeSelection;
+  qqMode?: 'official' | 'personal';
 }
 
 /**
@@ -306,7 +307,7 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         ctx.log(`profile 目录: ${join(paths.dshHome, 'profiles', BASELINE.dsh.profile)}`);
       },
     },
-    {
+    ...(deps.qqMode === 'personal' ? [] : [{
       id: 'install-qqbot',
       title: `安装 QQ 插件 ${BASELINE.qqbot.version}`,
       weight: 8,
@@ -340,7 +341,7 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         }
         ctx.log(`已安装: ${found.name}@${found.version}`);
       },
-    },
+    }]),
     {
       id: 'route-report',
       title: '记录路线检测结果',

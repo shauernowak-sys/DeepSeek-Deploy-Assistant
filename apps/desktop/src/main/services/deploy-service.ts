@@ -2,7 +2,7 @@ import { existsSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createTaskControl, executePlan, Journal, rollbackPlan, classifyRollbackTargets } from '@dda/core';
-import { loadRuntimeSelection, saveRuntimeSelection } from '@dda/adapters';
+import { loadRuntimeSelection, saveRuntimeSelection, loadDeploymentQqMode } from '@dda/adapters';
 import {
   DdaError,
   ERROR_CODES,
@@ -35,6 +35,7 @@ export interface StartDeployOptions {
   planId: string;
   confirmed: boolean;
   fresh?: boolean;
+  qqMode?: 'official' | 'personal';
 }
 
 export interface CancelResult {
@@ -90,6 +91,11 @@ export class DeployService {
     }
   }
 
+  async savedQqMode(): Promise<'official' | 'personal' | undefined> {
+    try { return await loadDeploymentQqMode(this.deps.container.paths); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  }
+
   async summary(): Promise<TaskSummary | undefined> {
     const data = await Journal.load(this.journalPath());
     if (!data) return undefined;
@@ -117,12 +123,19 @@ export class DeployService {
     const authorization = await this.deps.authorize(options.planId, options.confirmed);
     return this.serialize(async () => {
       if (!this.running) {
+        const previous = await Journal.load(this.journalPath());
+        if (previous && !options.fresh) {
+          const previousMode = await loadDeploymentQqMode(this.deps.container.paths).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return 'official' as const; throw error; });
+          if (previousMode !== (options.qqMode ?? 'official')) {
+            throw new DdaError(ERROR_CODES.E_DECISION_REQUIRED, '已有其他 QQ 路线的部署任务', '请先继续或处理已有任务，再开始新路线');
+          }
+        }
         if (options.fresh) this.retireJournal();
         // 先落盘本次确认的运行时，Harness 启动/重启后才能继续使用同一套 Node 与 CLI。
-        await saveRuntimeSelection(this.deps.container.paths, authorization.runtime, authorization.decision.planId);
+        await saveRuntimeSelection(this.deps.container.paths, authorization.runtime, authorization.decision.planId, options.qqMode ?? 'official');
         this.controlHandle = createTaskControl();
         const handle = this.controlHandle;
-        this.running = this.execute(handle.control, authorization.runtime)
+        this.running = this.execute(handle.control, authorization.runtime, options.qqMode ?? 'official')
           .catch((error: unknown) => this.failUnexpected(error))
           .finally(() => {
             this.running = undefined;
@@ -152,9 +165,10 @@ export class DeployService {
       }
       if (!this.running) {
         const runtime = await loadRuntimeSelection(this.deps.container.paths);
+        const qqMode = await loadDeploymentQqMode(this.deps.container.paths).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return 'official' as const; throw error; });
         this.controlHandle = createTaskControl();
         const handle = this.controlHandle;
-        this.running = this.execute(handle.control, runtime)
+        this.running = this.execute(handle.control, runtime, qqMode)
           .catch((error: unknown) => this.failUnexpected(error))
           .finally(() => {
             this.running = undefined;
@@ -327,7 +341,7 @@ export class DeployService {
     };
   }
 
-  private plan(runtime?: RuntimeSelection) {
+  private plan(runtime?: RuntimeSelection, qqMode: 'official' | 'personal' = 'official') {
     const { container } = this.deps;
     return buildDeploySteps({
       paths: container.paths,
@@ -336,19 +350,21 @@ export class DeployService {
       registry: container.registry,
       log: (m) => void container.logger.info('deploy', m),
       runtime,
+      qqMode,
     });
   }
 
   private async execute(
     control: ReturnType<typeof createTaskControl>['control'],
     runtime: RuntimeSelection,
+    qqMode: 'official' | 'personal',
   ): Promise<TaskSummary> {
     const { container } = this.deps;
     const journal = new Journal(this.journalPath());
     const result = await executePlan({
       taskId: this.taskId,
       scenario: SCENARIO,
-      steps: this.plan(runtime),
+      steps: this.plan(runtime, qqMode),
       journal,
       resume: true,
       control,

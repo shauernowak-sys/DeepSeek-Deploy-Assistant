@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SetupIllustration } from './SetupIllustration';
 
 
 import type {
@@ -18,7 +19,7 @@ import type {
  *
  * 五步与 `@dda/spec` 的部署步骤一一对应：
  *  1 环境检查 → precheck
- *  2 自动部署 → release / download / install / configure / start
+ *  2 用户自行下载、安装 SnowLuma
  *  3 QQ 登录  → 用户扫码（人工）
  *  4 Harness 连接 → link
  *  5 连接验收 → verify（必须由用户确认真实收到回复）
@@ -51,7 +52,6 @@ interface DdaApi {
   installUse(
     installDir: string,
   ): Promise<{ ok: boolean; verification: InstallVerification; message: string }>;
-  deployStart(payload: { installDir?: string; repair?: boolean }): Promise<SnowLumaDeploySnapshot>;
   deployStep(stepId: string): Promise<SnowLumaDeploySnapshot>;
   deployCancel(): Promise<SnowLumaDeploySnapshot>;
   deployStop(): Promise<{ ok: boolean; message: string }>;
@@ -97,59 +97,6 @@ const WIZARD = [
   { key: 'verify', title: '5. 消息测试', steps: ['verify'] as string[] },
 ];
 
-/** 安装引导的"示意图"（用文字框图，不伪造上游截图）。 */
-const TUTORIAL = [
-  {
-    title: '① 从官方页面下载 zip',
-    art: [
-      'GitHub · SnowLuma/SnowLuma · Releases',
-      '  v2.4.0  ─────────────────────────────',
-      '  SnowLuma-v2.4.0-win-x64.zip   ⬇ 下载',
-      '  SnowLuma-v2.4.0-win-x64-lite.zip',
-      '  （linux 包与 lite 包都不要选）',
-    ].join('\n'),
-    text: '只认 github.com/SnowLuma/SnowLuma/releases 这一个来源。lite 版需要你自备 Node 24+，不要选。',
-  },
-  {
-    title: '② 解压到固定目录',
-    art: [
-      '解压后应当是这一层：',
-      '  SnowLuma\\',
-      '   ├─ launcher.bat      ← 启动用',
-      '   ├─ node.exe          ← 自带运行时',
-      '   ├─ index.mjs',
-      '   ├─ release.json      ← 我们靠它识别',
-      '   ├─ client\\   native\\',
-      '  （不要再套一层 SnowLuma-v2.4.0-win-x64\\）',
-    ].join('\n'),
-    text: '建议解压到 %LOCALAPPDATA%\\SnowLuma 或 D:\\SnowLuma。一定不要解压进 QQ 的安装目录，也不要放进系统目录。',
-  },
-  {
-    title: '③ 启动一次并完成 QQ 登录',
-    art: [
-      '双击 launcher.bat 后会打开一个黑窗口：',
-      '  ┌──────────────────────────────┐',
-      '  │ SnowLuma runtime starting…   │',
-      '  │ WebUI: http://127.0.0.1:5099 │',
-      '  └──────────────────────────────┘',
-      '窗口要一直开着；关掉窗口 = 关掉 SnowLuma。',
-    ].join('\n'),
-    text: '首次启动会打印 WebUI 初始口令（只打印一次）。打开 WebUI 里由你本人接受 EULA/PRIVACY，再用手机 QQ 扫码登录。',
-  },
-  {
-    title: '④ 回到本页点"我已完成安装"',
-    art: [
-      '本软件接下来只做这些（都是只读或我们自己的配置）：',
-      '  ✓ 识别安装目录并校验 release.json / node.exe',
-      '  ✓ 读取 OneBot 端点与令牌（只在主进程）',
-      '  ✓ 写入 dsh-qq-link 配置',
-      '  ✓ 检查 get_login_info 与 bridge 状态',
-      '  ✗ 不下载、不解压、不改 SnowLuma 文件',
-    ].join('\n'),
-    text: '如果自动没找到，点"选择 SnowLuma 目录"，选到含 release.json 的那一层即可。',
-  },
-];
-
 function Flag({ ok, yes = '是', no = '否' }: { ok: boolean; yes?: string; no?: string }): JSX.Element {
   return <span className={ok ? 'badge ok' : 'badge warn'}>{ok ? yes : no}</span>;
 }
@@ -160,58 +107,6 @@ function bytes(value?: number): string {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-function StepRow({
-  step,
-  onRetry,
-  busy,
-}: {
-  step: SnowLumaStepState;
-  onRetry: (id: string) => void;
-  busy: boolean;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const status = STEP_STATUS_LABEL[step.status];
-  const percent = step.progress?.percent;
-  return (
-    <div className="step-line">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div className="row">
-          <span className={`badge ${status.cls}`}>{status.text}</span>
-          <b>{step.label}</b>
-          {step.detail && <span className="muted">{step.detail}</span>}
-        </div>
-        <div className="row">
-          {step.evidence.length > 0 && (
-            <button className="link" onClick={() => setOpen((value) => !value)}>
-              {open ? '收起证据' : `证据 ${step.evidence.length}`}
-            </button>
-          )}
-          <button onClick={() => onRetry(step.id)} disabled={busy || !step.retryable}>
-            重新执行
-          </button>
-        </div>
-      </div>
-
-      {percent !== undefined && percent < 100 && (
-        <>
-          <div className="progress">
-            <div style={{ width: `${percent}%` }} />
-          </div>
-          <div className="muted" style={{ fontSize: 12 }}>
-            {bytes(step.progress?.receivedBytes)} / {bytes(step.progress?.totalBytes)}（{percent}%）
-            {step.progress?.speedBps ? ` · ${bytes(step.progress.speedBps)}/s` : ''}
-            {step.progress?.etaSeconds ? ` · 剩余约 ${step.progress.etaSeconds} 秒` : ''}
-          </div>
-        </>
-      )}
-
-      {step.error && <div className="error">{step.error}</div>}
-      {step.hint && <div className="muted">建议：{step.hint}</div>}
-      {open && <pre className="log">{step.evidence.join('\n') || '（无）'}</pre>}
-    </div>
-  );
 }
 
 export function PersonalQqPanel(): JSX.Element {
@@ -408,56 +303,18 @@ export function PersonalQqPanel(): JSX.Element {
   };
 
   return (
-    <div>
-      <div className={gateway?.allowed ? 'banner ok' : 'banner warn'}>
-        <b>
-          {guide?.displayName ?? 'SnowLuma'} 接入方式：
-          {gateway?.allowed ? '已获书面授权，可自动部署' : '官方下载 + 手动安装 + 自动检测'}
-        </b>
-        <div className="muted" style={{ marginTop: 4 }}>
-          {gateway?.allowed
-            ? gateway.reason
-            : 'SnowLuma 的 EULA §5.4 要求"通过自动化脚本部署"须事先取得书面授权，因此下载与安装由你在官方渠道完成；本软件负责安装校验、Harness 配置、OneBot 检测与消息验收，不代下载、不代安装、不伪造成功。'}
-        </div>
-        <div className="muted" style={{ marginTop: 4 }}>
-          许可：{guide?.license.name ?? '-'}（{guide?.license.spdx ?? '-'}）。协议必须由你本人在 SnowLuma WebUI
-          里接受，本软件不会代按。
-          <button className="link" onClick={() => open('eula')}>
-            查看 EULA
-          </button>
-          <button className="link" onClick={() => open('releases')}>
-            官方 Releases
-          </button>
-        </div>
+    <div className="qq-route">
+      <div className="route-status">
+        <div><span className="route-kicker">个人 QQ</span><h3>连接你的 QQ</h3><p>自行安装 SnowLuma，完成登录后检查连接。</p></div>
+        <span className={`badge ${phase?.cls ?? ''}`}>{phase?.text ?? '读取中…'}</span>
       </div>
-
-      <p>
-        <span className={`badge ${phase?.cls ?? ''}`}>{phase?.text ?? '读取中…'}</span>{' '}
-        <span className="muted">{status?.message}</span>
-      </p>
-      {snapshot?.message && snapshot.status !== 'idle' && <p className="muted">{snapshot.message}</p>}
+      {status?.message && <p className="route-message">{status.message}</p>}
+      {snapshot?.message && snapshot.status !== 'idle' && <p className="route-message">{snapshot.message}</p>}
       {notice && <div className="banner warn">{notice}</div>}
-
-      <div className="row" style={{ marginBottom: 12 }}>
-        <button className="primary" onClick={() => open('releases')} disabled={Boolean(busy)}>
-          前往 SnowLuma 官方下载
-        </button>
-        <button onClick={() => void load()} disabled={Boolean(busy)}>
-          {busy === 'refresh' ? '检测中…' : '重新检测'}
-        </button>
-        <button onClick={() => void pickInstallDir()} disabled={Boolean(busy)}>
-          选择 SnowLuma 目录
-        </button>
-        <button onClick={() => void api.personalOpenInstallDir()} disabled={Boolean(busy)}>
-          打开安装目录
-        </button>
-      </div>
-
-      <div className="stepper">
-        {wizardState.map((item) => (
-          <button key={item.key} className={`chip ${tab === item.key ? 'primary' : ''}`} onClick={() => setTab(item.key)}>
-            <span>{item.title}</span>
-            <span className={`badge ${STEP_STATUS_LABEL[item.status].cls}`}>{STEP_STATUS_LABEL[item.status].text}</span>
+      <div className="route-steps" aria-label="个人 QQ 接入步骤">
+        {wizardState.map((item, index) => (
+          <button key={item.key} className={`route-step ${tab === item.key ? 'active' : ''}`} aria-current={tab === item.key ? 'step' : undefined} onClick={() => setTab(item.key)}>
+            <span className="route-step-number">{index + 1}</span><span className="route-step-label">{item.title.replace(/^\d+\.\s*/, '')}</span><span className="route-step-state">{STEP_STATUS_LABEL[item.status].text}</span>
           </button>
         ))}
       </div>
@@ -517,84 +374,15 @@ export function PersonalQqPanel(): JSX.Element {
       {tab === 'install' && (
         <div className="card">
           <h3>第二步：下载与安装 SnowLuma</h3>
-          <p className="muted">
-            这一步由你本人完成：从<b>官方 GitHub Releases</b> 下载、解压、启动一次。本软件不代下载、不代安装、不改
-            SnowLuma 的任何文件；装好之后，安装校验、Harness 配置、OneBot 检测与消息验收由我们负责。
-          </p>
-
-          <div className="install-card">
-            <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 6 }}>
-              <span className="muted">来源</span>
-              <span>
-                GitHub · <code>SnowLuma/SnowLuma</code> · Releases
-                <button className="link" onClick={() => open('releases')}>
-                  打开
-                </button>
-              </span>
-              <span className="muted">推荐版本</span>
-              <span>
-                <b>v{guide?.version ?? '2.4.0'}</b>（Windows x64 完整版，自带 Node 运行时，无需另装）
-              </span>
-              <span className="muted">文件名</span>
-              <span>
-                <code>{guide?.asset.fileName ?? '-'}</code>
-                {guide?.asset ? <span className="muted">（{bytes(guide.asset.sizeBytes)}）</span> : null}
-              </span>
-              <span className="muted">SHA-256</span>
-              <span>
-                <code className="hash">{guide?.asset.sha256 ?? '-'}</code>
-              </span>
-            </div>
-            <div className="muted" style={{ marginTop: 8 }}>
-              校验说明：官方 Releases 不附带校验和文件；上面的 SHA-256 是本产品对官方 v2.4.0 包实测并与 GitHub API
-              的 <code>digest</code> 核对后锁定的值。你可以自行核对：
-              <br />
-              <code>
-                certutil -hashfile "%USERPROFILE%\Downloads\{guide?.asset.fileName ?? 'SnowLuma-v2.4.0-win-x64.zip'}"
-                SHA256
-              </code>
-            </div>
+          <p>请跟着下面的四步操作。下载和安装由你自己完成。</p>
+          <p className="illustration-note">以下为操作示意图，实际页面可能略有不同。</p>
+          <div className="visual-guide">
+            <article className="visual-guide-step"><SetupIllustration scene="download" /><div><span className="guide-number">1</span><h4>打开官方下载页面</h4><p>点击下方按钮，在打开的页面找到 Windows x64 的完整版压缩包并下载。</p><p className="guide-file">选择文件：<strong>{guide?.asset.fileName ?? '正在读取推荐文件名…'}</strong></p><p className="guide-tip">不要选择名称带 <b>lite</b> 的文件。</p><button className="primary" onClick={() => open('releases')} disabled={Boolean(busy)}>打开官方下载页面 ↗</button></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="extract" /><div><span className="guide-number">2</span><h4>解压下载的文件</h4><p>打开电脑的“下载”文件夹，找到刚才下载的压缩包，点击鼠标右键，选择<b>“全部解压”</b>，再按窗口提示完成解压。</p><p className="guide-tip">请记住解压后的文件夹位置，不要解压到 QQ 或 Windows 系统目录。</p></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="launch" /><div><span className="guide-number">3</span><h4>打开解压后的文件夹</h4><p>在文件夹中找到 <b>launcher.bat</b>，用鼠标双击它（如果电脑隐藏了文件扩展名，可能只显示 launcher）。首次启动时，请记下窗口中显示的初始登录口令。</p><p className="guide-tip">启动后请保持打开的窗口运行，不要关闭。</p></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="check" /><div><span className="guide-number">4</span><h4>回到这里检查</h4><p>完成前面的操作后，点击下方按钮。本软件会检查安装位置；若未找到，可以手动选择刚才解压的文件夹。</p><div className="row"><button className="primary" onClick={() => void recheckInstall()} disabled={Boolean(busy)}>{busy === 'install-recheck' ? '正在检测…' : '我已完成安装，开始检测'}</button><button onClick={() => void pickInstallDir()} disabled={Boolean(busy)}>手动选择文件夹</button></div></div></article>
           </div>
-
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="primary" onClick={() => open('releases')} disabled={Boolean(busy)}>
-              前往 SnowLuma 官方下载
-            </button>
-            <button onClick={() => open('eula')} disabled={Boolean(busy)}>
-              查看 EULA
-            </button>
-            <button onClick={() => open('license')} disabled={Boolean(busy)}>
-              查看 LICENSE
-            </button>
-          </div>
-
-          <h4>图文安装步骤（示意图）</h4>
-          {TUTORIAL.map((item) => (
-            <div key={item.title} className="tutorial-step">
-              <div className="tutorial-art">
-                <pre>{item.art}</pre>
-              </div>
-              <div>
-                <b>{item.title}</b>
-                <div className="muted" style={{ marginTop: 4 }}>
-                  {item.text}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          <h4>装好了？</h4>
-          <div className="row">
-            <button className="primary" onClick={() => void recheckInstall()} disabled={Boolean(busy)}>
-              {busy === 'install-recheck' ? '正在检测…' : '我已完成安装（重新检测）'}
-            </button>
-            <button onClick={() => void pickInstallDir()} disabled={Boolean(busy)}>
-              选择 SnowLuma 目录
-            </button>
-            <button onClick={() => void api.personalOpenInstallDir()} disabled={Boolean(busy)}>
-              打开安装目录
-            </button>
-          </div>
+          <details className="advanced-settings"><summary>下载信息与校验详情</summary><p>推荐版本：v{guide?.version ?? '2.4.0'}；文件：<code>{guide?.asset.fileName ?? '读取中'}</code>{guide?.asset ? `（${bytes(guide.asset.sizeBytes)}）` : ''}</p><p>SHA-256：<code className="hash">{guide?.asset.sha256 ?? '读取中'}</code></p><p className="muted">校验值由本项目锁定并与 GitHub API 的 digest 核对。协议需由你本人阅读和接受。</p><div className="row"><button onClick={() => open('eula')}>查看 EULA</button><button onClick={() => open('license')}>查看 LICENSE</button><button onClick={() => void api.personalOpenInstallDir()}>打开安装目录</button></div></details>
 
           <h4>安装检测结果（只读）</h4>
           {!verification && <div className="empty">尚未检测。</div>}
@@ -720,82 +508,19 @@ export function PersonalQqPanel(): JSX.Element {
             </ul>
           </details>
 
-          <details style={{ marginTop: 8 }}>
-            <summary>自动下载与安装（需著作权人书面授权，当前{gateway?.allowed ? '已放行' : '不可用'}）</summary>
-            {!gateway?.allowed && (
-              <div className="banner warn">
-                受 SnowLuma EULA §5.4 限制，未登记书面授权时下列步骤不会执行；它们会显示为「受许可限制」，不会假装成功。
-              </div>
-            )}
-            {(snapshot?.steps ?? [])
-              .filter((step) => step.id !== 'precheck' && step.id !== 'link' && step.id !== 'verify')
-              .map((step) => (
-                <StepRow
-                  key={step.id}
-                  step={step}
-                  busy={Boolean(busy)}
-                  onRetry={(id) => void run(id, () => api.deployStep(id))}
-                />
-              ))}
-            <div className="row" style={{ marginTop: 10 }}>
-              <button
-                onClick={() => void run('start', () => api.deployStart({}))}
-                disabled={Boolean(busy) || snapshot?.status === 'running'}
-              >
-                {snapshot?.status === 'running' ? '自动部署进行中…' : '开始自动部署'}
-              </button>
-              <button
-                onClick={() => void run('repair', () => api.deployStart({ repair: true }))}
-                disabled={Boolean(busy)}
-              >
-                修复安装（保留配置与登录态）
-              </button>
-              <button onClick={() => void run('cancel', () => api.deployCancel(), '已取消部署')} disabled={Boolean(busy)}>
-                取消
-              </button>
-              <button onClick={() => void run('stop', () => api.deployStop(), '已停止 SnowLuma')} disabled={Boolean(busy)}>
-                停止 SnowLuma
-              </button>
-            </div>
-          </details>
+
         </div>
       )}
 
       {tab === 'login' && (
         <div className="card">
           <h3>第三步：QQ 登录</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 6 }}>
-            <span className="muted">WebUI 地址</span>
-            <span>
-              {guide?.webuiUrl ?? '-'} <Flag ok={Boolean(status?.service.webuiReachable)} yes="可连接" no="未监听" />
-            </span>
-            <span className="muted">OneBot HTTP</span>
-            <span>
-              <Flag ok={Boolean(status?.service.onebotReachable)} yes="已监听" no="未监听" />
-            </span>
-            <span className="muted">QQ 登录状态</span>
-            <span>
-              <Flag
-                ok={Boolean(status?.service.onebotResponsive)}
-                yes={`已登录 ${status?.service.loginUin ?? ''}`}
-                no="未登录"
-              />
-              {status?.service.error && <span className="muted"> {status.service.error}</span>}
-            </span>
-          </div>
-          <ol className="muted" style={{ marginTop: 10 }}>
-            <li>
-              如果 SnowLuma 没在运行：到安装目录双击 <code>launcher.bat</code>（黑窗口要一直开着）。
-            </li>
-            <li>点「打开 SnowLuma WebUI」，用下面的初始口令登录（上游只打印一次，改密后不再显示）。</li>
-            <li>
-              在 WebUI 里阅读并<b>由你本人</b>接受 EULA / PRIVACY（本软件不会代按）。
-            </li>
-            <li>用手机 QQ 扫码登录。登录成功后返回本页点「重新检测」。</li>
-          </ol>
+          <p>先完成安装，再按下面的顺序登录。以下为示意图，实际页面可能不同。</p>
+          <div className="login-guide"><SetupIllustration scene="login" /><div><ol><li>确认电脑上的 QQ 已经打开，并保持 SnowLuma 的启动窗口运行。</li><li>点击“打开 SnowLuma 登录页面”，输入首次启动时记下的口令。</li><li>阅读页面上的协议并由你本人决定是否接受，然后使用手机 QQ 扫码。</li><li>回到这里，点击“重新检测”，查看登录状态。</li></ol></div></div>
+          <p>当前状态：<Flag ok={Boolean(status?.service.onebotResponsive)} yes="检测到已登录" no="尚未检测到登录" /></p>
           <div className="row">
             <button onClick={() => open('webui')} disabled={Boolean(busy)}>
-              打开 SnowLuma WebUI
+              打开 SnowLuma 登录页面
             </button>
             {gateway?.allowed && (
               <button
@@ -966,8 +691,16 @@ export function PersonalQqPanel(): JSX.Element {
         </div>
       )}
 
+      <div className="route-actions personal-route-actions">
+        <button onClick={() => setTab(WIZARD[Math.max(0, WIZARD.findIndex((item) => item.key === tab) - 1)]!.key)} disabled={tab === WIZARD[0]!.key}>上一步</button>
+        <button className="primary" onClick={() => setTab(WIZARD[Math.min(WIZARD.length - 1, WIZARD.findIndex((item) => item.key === tab) + 1)]!.key)} disabled={tab === WIZARD[WIZARD.length - 1]!.key}>下一步 →</button>
+      </div>
       <details className="card">
         <summary>高级信息（日志、配置备份、卸载）</summary>
+        <div className="row" style={{ marginTop: 10 }}>
+          {snapshot?.status === 'running' && <button onClick={() => void run('cancel', () => api.deployCancel(), '已取消部署')} disabled={Boolean(busy)}>取消旧任务</button>}
+          {processInfo?.running && <button onClick={() => void run('stop', () => api.deployStop(), '已停止 SnowLuma')} disabled={Boolean(busy)}>停止 SnowLuma</button>}
+        </div>
         <div className="row" style={{ marginTop: 10 }}>
           <button onClick={() => void loadAdvanced()}>刷新高级信息</button>
         </div>

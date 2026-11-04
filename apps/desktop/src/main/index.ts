@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, session } from 'electron';
+import { app, BrowserWindow, dialog, Menu, session } from 'electron';
 import { join } from 'node:path';
 
 import { appPaths } from '@dda/adapters';
@@ -162,6 +162,8 @@ if (!gotLock) {
     logger = container.logger;
     await container.logger.info('app', `starting ${app.getVersion()} (packaged=${app.isPackaged})`);
 
+    // Hide Electron's default application menu and retain native Windows window controls.
+    Menu.setApplicationMenu(null);
     const win = new BrowserWindow({
       width: 1080,
       height: 760,
@@ -169,6 +171,11 @@ if (!gotLock) {
       minHeight: 640,
       show: false,
       title: 'DeepSeek Deploy Assistant',
+      ...(process.platform === 'win32' ? {
+        titleBarStyle: 'hidden' as const,
+        titleBarOverlay: { color: '#f0f4fa', symbolColor: '#52637a', height: 36 },
+      } : {}),
+      icon: app.isPackaged ? join(process.resourcesPath, 'app-icon.png') : join(app.getAppPath(), 'apps', 'desktop', 'resources', 'app-icon.png'),
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,

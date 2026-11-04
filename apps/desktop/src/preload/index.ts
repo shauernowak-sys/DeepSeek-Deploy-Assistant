@@ -10,7 +10,7 @@ const api = {
     ipcRenderer.invoke('env:inspect', preferences ? { preferences } : {}),
   decideEnv: (preferences?: unknown) =>
     ipcRenderer.invoke('env:decide', preferences ? { preferences } : {}),
-  startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean }) =>
+  startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean; qqMode?: 'official' | 'personal' }) =>
     ipcRenderer.invoke('task:start', { scenario: 'full-deploy', ...input }),
   resumeDeploy: (taskId: string) => ipcRenderer.invoke('task:resume', { taskId }),
   taskStatus: (taskId: string) => ipcRenderer.invoke('task:status', { taskId }),
@@ -59,8 +59,6 @@ const api = {
   installVerify: (installDir?: string) =>
     ipcRenderer.invoke('personal:install-verify', installDir ? { installDir } : {}),
   installUse: (installDir: string) => ipcRenderer.invoke('personal:install-use', { installDir }),
-  deployStart: (payload: { installDir?: string; repair?: boolean }) =>
-    ipcRenderer.invoke('personal:deploy-start', payload),
   deployStep: (stepId: string) => ipcRenderer.invoke('personal:deploy-step', { stepId }),
   deployCancel: () => ipcRenderer.invoke('personal:deploy-cancel', {}),
   deployStop: () => ipcRenderer.invoke('personal:deploy-stop', {}),

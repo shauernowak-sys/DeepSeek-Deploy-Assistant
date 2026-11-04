@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { NtExecutable, NtExecutableResource, Resource } from 'resedit';
+import { NtExecutable, NtExecutableResource, Resource, Data } from 'resedit';
 
 const root = process.cwd();
 const PRODUCT_NAME = 'DeepSeek Deploy Assistant';
@@ -59,6 +59,12 @@ info.setStringValues(language, {
 });
 
 info.outputToResourceEntries(resources.entries);
+const icon = Data.IconFile.from(await readFile(join(root, 'build', 'icon.ico')));
+const groups = Resource.IconGroupEntry.fromEntries(resources.entries);
+for (const group of groups) {
+  Resource.IconGroupEntry.replaceIconsForResource(resources.entries, group.id, group.lang, icon.icons.map((item) => item.data));
+}
+if (groups.length === 0) Resource.IconGroupEntry.replaceIconsForResource(resources.entries, 1, 1033, icon.icons.map((item) => item.data));
 resources.outputResource(exe);
 await writeFile(exePath, Buffer.from(exe.generate()));
 

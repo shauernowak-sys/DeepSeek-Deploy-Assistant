@@ -10,6 +10,7 @@ import { dshBinJs, nodeExe, type AppPaths } from '../paths';
 export interface StoredRuntimeSelection extends RuntimeSelection {
   savedAt: string;
   planId?: string;
+  qqMode?: 'official' | 'personal';
 }
 
 export function runtimeSelectionPath(paths: AppPaths): string {
@@ -21,9 +22,10 @@ export async function saveRuntimeSelection(
   paths: AppPaths,
   selection: RuntimeSelection,
   planId?: string,
+  qqMode?: 'official' | 'personal',
 ): Promise<string> {
   const file = runtimeSelectionPath(paths);
-  const payload: StoredRuntimeSelection = { ...selection, savedAt: new Date().toISOString(), planId };
+  const payload: StoredRuntimeSelection = { ...selection, savedAt: new Date().toISOString(), planId, qqMode };
   await writeFileAtomic(file, `${JSON.stringify(payload, null, 2)}\n`);
   return file;
 }
@@ -67,4 +69,15 @@ export async function loadRuntimeSelection(paths: AppPaths): Promise<RuntimeSele
     node: { mode: node.mode, exe: node.exe, dir: node.dir, version: node.version },
     harness: { mode: parsed.harness.mode, bin: parsed.harness.bin, version: parsed.harness.version },
   };
+}
+
+/** Legacy tasks without a mode used the official QQ deployment plan. */
+export async function loadDeploymentQqMode(paths: AppPaths): Promise<'official' | 'personal'> {
+  const raw = await readFile(runtimeSelectionPath(paths), 'utf8');
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object') throw new Error('部署路线记录无效，请重新确认部署方案');
+  const mode = (parsed as StoredRuntimeSelection).qqMode;
+  if (mode === undefined || mode === 'official') return 'official';
+  if (mode === 'personal') return mode;
+  throw new Error('部署路线记录无效，请重新确认部署方案');
 }

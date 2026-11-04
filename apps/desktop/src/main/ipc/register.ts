@@ -19,7 +19,6 @@ import {
   SnowLumaEmptySchema,
   SnowLumaRestoreConfigSchema,
   SnowLumaRunStepSchema,
-  SnowLumaStartDeploySchema,
   SnowLumaUninstallSchema,
   SnowLumaUseInstallSchema,
   SnowLumaVerifyInstallSchema,
@@ -74,6 +73,7 @@ export function registerIpc(ctx: IpcContext): void {
     dataDir: ctx.container.paths.root,
     registry: ctx.container.registry,
     lastTask: await ctx.deploy.summary(),
+    lastTaskQqMode: await ctx.deploy.savedQqMode().catch(() => undefined),
     // Single source of truth for the "verified DeepSeek template" shown in the UI.
     apiTemplate: DEEPSEEK_TEMPLATE,
     apiModels: DEEPSEEK_MODELS,
@@ -209,11 +209,6 @@ export function registerIpc(ctx: IpcContext): void {
     return ctx.deployment.useInstallDir(installDir);
   });
 
-  ipcMain.handle('personal:deploy-start', async (_event, raw: unknown) => {
-    const input = SnowLumaStartDeploySchema.parse(raw ?? {});
-    return ctx.deployment.start(input);
-  });
-
   ipcMain.handle('personal:deploy-step', async (_event, raw: unknown) => {
     const { stepId } = SnowLumaRunStepSchema.parse(raw);
     return ctx.deployment.retryStep(stepId);
@@ -264,7 +259,7 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('task:start', async (_event, raw: unknown) => {
     const payload = TaskStartSchema.parse(raw);
-    return ctx.deploy.start({ planId: payload.planId, confirmed: payload.confirmed, fresh: payload.fresh });
+    return ctx.deploy.start({ planId: payload.planId, confirmed: payload.confirmed, fresh: payload.fresh, qqMode: payload.qqMode });
   });
 
   ipcMain.handle('task:resume', async (_event, raw: unknown) => {

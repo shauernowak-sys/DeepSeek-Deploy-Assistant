@@ -148,6 +148,7 @@ interface Bootstrap {
   dataDir: string;
   registry: string;
   lastTask?: TaskSummary;
+  lastTaskQqMode?: 'official' | 'personal';
   apiTemplate: ApiProviderView;
   apiModels: { id: string; name: string; contextWindow: number }[];
   apiStatus: ApiStatusView;
@@ -321,7 +322,7 @@ type Api = {
   bootstrap: () => Promise<Bootstrap>;
   inspectEnv: (preferences?: Record<string, unknown>) => Promise<InspectionView>;
   decideEnv: (preferences?: Record<string, unknown>) => Promise<DecisionView>;
-  startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean }) => Promise<{ taskId: string }>;
+  startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean; qqMode?: 'official' | 'personal' }) => Promise<{ taskId: string }>;
   resumeDeploy: (taskId: string) => Promise<{ taskId: string }>;
   taskStatus: (taskId: string) => Promise<TaskSummary | undefined>;
   pauseDeploy: (taskId: string) => Promise<TaskSummary | undefined>;
@@ -474,7 +475,11 @@ export function App(): JSX.Element {
   const [env, setEnv] = useState<EnvReport>();
   const [decision, setDecision] = useState<DecisionView>();
   const [deployPlan, setDeployPlan] = useState<DecisionView>();
-  const [qqTab, setQqTab] = useState<'official' | 'personal'>('official');
+  const [qqMode, setQqMode] = useState<'official' | 'personal' | null>(() => {
+    const saved = localStorage.getItem('dda-qq-mode');
+    return saved === 'official' || saved === 'personal' ? saved : null;
+  });
+  const [qqTab, setQqTab] = useState<'official' | 'personal'>(() => localStorage.getItem('dda-qq-mode') === 'personal' ? 'personal' : 'official');
   const [task, setTask] = useState<TaskSummary>();
   const [info, setInfo] = useState<HarnessInfo>();
   const [progress, setProgress] = useState(0);
@@ -504,6 +509,7 @@ export function App(): JSX.Element {
   const [qqAppId, setQqAppId] = useState('');
   const [qqAppSecret, setQqAppSecret] = useState('');
   const [qqMessage, setQqMessage] = useState<string>();
+  const [officialStep, setOfficialStep] = useState<'plugin' | 'auth' | 'settings'>('plugin');
   const [qqTail, setQqTail] = useState<string[]>([]);
   const [confirmQqUnbind, setConfirmQqUnbind] = useState(false);
 
@@ -513,6 +519,11 @@ export function App(): JSX.Element {
         const b = await api.bootstrap();
         setBoot(b);
         if (b.lastTask) setTask(b.lastTask);
+        if (b.lastTask && ['pending', 'running', 'paused', 'failed'].includes(b.lastTask.status) && b.lastTaskQqMode) {
+          setQqMode(b.lastTaskQqMode);
+          setQqTab(b.lastTaskQqMode);
+          localStorage.setItem('dda-qq-mode', b.lastTaskQqMode);
+        }
         setKeyMask(b.apiStatus.keyMask);
         setApiStatusView(b.apiStatus);
         setApiForm(b.apiStatus.config ?? b.apiTemplate);
@@ -523,14 +534,6 @@ export function App(): JSX.Element {
         const i = await api.harnessInfo();
         setInfo(i);
         setPlugins(i.plugins);
-        // 只读检测放到后台，避免网络探测拖慢首屏；结果回来后立即刷新。
-        void api
-          .inspectEnv()
-          .then((inspection) => {
-            setEnv(inspection.environment);
-            setDecision(inspection.decision);
-          })
-          .catch((e: unknown) => setError(readableError(e)));
       } catch (e) {
         setError(String(e));
       }
@@ -541,6 +544,26 @@ export function App(): JSX.Element {
       if (event.status === 'running') setCurrentStep(event.message);
     });
   }, [api]);
+
+  useEffect(() => {
+    if (!qqMode) return;
+    let cancelled = false;
+    void api.inspectEnv().then((inspection) => {
+      if (!cancelled) { setEnv(inspection.environment); setDecision(inspection.decision); }
+    }).catch((e: unknown) => { if (!cancelled) setError(readableError(e)); });
+    return () => { cancelled = true; };
+  }, [api, qqMode]);
+
+  const selectQqMode = (mode: 'official' | 'personal') => {
+    if (task && ['pending', 'running', 'paused', 'failed'].includes(task.status) && qqMode && qqMode !== mode) {
+      setError('还有一项未完成的部署任务，请先继续或处理该任务，再切换 QQ 方式。');
+      return;
+    }
+    localStorage.setItem('dda-qq-mode', mode);
+    setQqMode(mode);
+    setQqTab(mode);
+    setPage('environment');
+  };
 
   const mergeTask = useCallback((next?: TaskSummary) => {
     if (!next) return;
@@ -662,6 +685,7 @@ export function App(): JSX.Element {
       const { taskId } = await api.startDeploy({
         planId: deployPlan.planId,
         confirmed: true,
+        qqMode: qqMode ?? 'official',
         fresh: task?.status === 'succeeded',
       });
       setModal(null);
@@ -845,20 +869,22 @@ export function App(): JSX.Element {
   const completedSteps = steps.filter((s) => s.status === 'succeeded' || s.status === 'skipped').length;
   const failure = failureCategory(task?.error);
   const stage = running ? currentStep ?? '准备中' : undefined;
-  const routeClass =
-    env?.route.kind === 'none' ? 'warn' : env?.route.kind === 'multiple' || env?.route.kind === 'unknown' ? 'bad' : 'ok';
 
   return (
     <div className="app">
-      <header><h1>DeepSeek Deploy Assistant</h1><span className="muted">部署与配置助手</span></header>
-      <nav className="navigation" aria-label="主导航">{([['home','首页'],['environment','环境检查'],['deploy','部署'],['model','模型配置'],['qq','QQ 接入'],['status','运行状态'],['finish','使用指南'],['diagnostics','故障诊断']] as const).map(([id,label]) => <button key={id} className={page === id ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}>{label}</button>)}</nav>
-      {page === 'home' && <section className="card home"><h2>让 AI 助手准备就绪</h2><p>检查环境、部署助手，然后配置模型和 QQ。</p><div className="overview">
-        <div><span>运行环境</span><strong>{!env ? '检测中' : decision?.blocked ? '需要处理' : '已检测'}</strong></div>
-        <div><span>AI 助手程序</span><strong>{!info ? '未验证' : info.dshVersion ? '已安装' : '未安装'}</strong></div>
-        <div><span>模型配置</span><strong>{!apiStatusView ? '未验证' : apiStatusView.configured ? '已配置，连接待验证' : '未配置'}</strong></div>
-        <div><span>官方 QQ</span><strong>{!qqStatus ? '未验证' : QQ_PHASE_LABEL[qqStatus.phase].text}</strong></div>
-        <div><span>插件资源</span><strong>尚未提供</strong></div></div>
-        <div className="row"><button className="primary" onClick={() => setPage(task && ['paused','failed'].includes(task.status) ? 'deploy' : 'environment')}>{task && ['paused','failed'].includes(task.status) ? '继续未完成任务' : '开始部署'}</button><button onClick={() => setPage('diagnostics')}>故障诊断</button></div></section>}
+      <div className="window-titlebar" aria-hidden="true" />
+      <header className="brand"><img className="brand-mark" src={new URL('./assets/app-icon.svg', import.meta.url).href} alt="" /><div><h1>DeepSeek</h1><span>部署助手</span></div></header>
+      <nav className="navigation" aria-label="主导航">{([['home','选择接入方式'],['environment','部署向导'],['finish','使用指南'],['diagnostics','故障诊断']] as const).map(([id,label]) => <button key={id} className={(page === id || (id === 'environment' && ['deploy','model','qq'].includes(page))) ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id === 'environment' && !qqMode ? 'home' : id)}>{label}</button>)}</nav>
+      {page === 'home' && <main className="home-page">
+        <div className="page-heading"><div><span className="eyebrow">开始使用</span><h2>选择 QQ 接入方式</h2><p>先选择你想使用的 QQ 方式，之后我们会引导你完成部署。</p></div></div>
+        {task && ['paused','failed'].includes(task.status) && qqMode && <div className="resume-strip"><span>你有一个未完成的部署任务</span><button onClick={() => setPage('deploy')}>继续部署 →</button></div>}
+        <div className="mode-grid">
+          <button className="mode-card" onClick={() => selectQqMode('official')}><span className="mode-index">01</span><strong>官方 QQ 机器人</strong><span>适合在群聊中使用，通过 QQ 官方平台创建和授权机器人。</span><span className="mode-action">选择官方机器人 →</span></button>
+          <button className="mode-card" onClick={() => selectQqMode('personal')}><span className="mode-index">02</span><strong>个人 QQ</strong><span>使用自己的 QQ，需自行下载、安装并登录 SnowLuma。</span><span className="mode-action">选择个人 QQ →</span></button>
+        </div>
+        <p className="mode-note">选择后将开始只读环境检查，你可以在部署前返回更改。</p>
+      </main>}
+      {['environment','deploy','model','qq'].includes(page) && <div className="journey-header"><div><span className="eyebrow">{qqMode === 'personal' ? '个人 QQ' : '官方 QQ 机器人'}</span><h2>部署向导</h2></div><div className="journey-steps" aria-label="部署步骤">{([['environment','环境检查'],['deploy','部署环境'],['model','接入 DeepSeek'],['qq','连接 QQ']] as const).map(([id,label], i) => <button type="button" key={id} className={page === id ? 'current' : ''} aria-current={page === id ? 'step' : undefined} onClick={() => setPage(id)}><b>{i + 1}</b><span>{label}</span></button>)}</div></div>}
       {page === 'finish' && <section className="card"><h2>开始使用</h2><p>真实 QQ 消息仍需自行验证。</p><div className="overview">
         <div><span>运行环境</span><strong>{!env ? '未验证' : decision?.blocked ? '需要处理' : '已检测'}</strong></div>
         <div><span>助手程序</span><strong>{!info ? '未验证' : info.dshVersion ? '已安装' : '未安装'}</strong></div>
@@ -896,7 +922,7 @@ export function App(): JSX.Element {
 
       <div className="page-group">
         <section className="card" hidden={page !== 'environment'}>
-          <h2>环境检查</h2><p>检查完成后，查看部署方案并确认。</p><div className="row"><button className="primary" onClick={() => setPage('deploy')}>下一步：部署</button></div>
+          <h2>环境检查</h2><p className="section-intro">只读检查，不会修改电脑。</p><div className="row section-actions"><button onClick={() => setPage('home')}>上一步</button><button className="primary" onClick={() => setPage('deploy')} disabled={!env || Boolean(busy)}>下一步：部署环境 →</button></div>
           <div className="row">
             <button onClick={scan} disabled={Boolean(busy)}>
               {busy === 'scan' ? '检测中…' : '重新检测'}
@@ -906,10 +932,8 @@ export function App(): JSX.Element {
                 结论：{DECISION_LABEL[decision.overall]?.text ?? decision.overall}
               </span>
             )}
-            {env && <span className={`badge ${routeClass}`}>路线：{env.route.kind}</span>}
             {env && <span className="muted">磁盘可用 {(env.diskFreeBytes / 1024 ** 3).toFixed(1)} GB</span>}
           </div>
-          <p className="muted">这一步只读，不会修改你的电脑，也不会安装任何软件。</p>
           {decision && <p><b>{decisionHeadline(decision)}</b></p>}
           {decision && decision.blockers.length > 0 && (
             <div className="banner bad">
@@ -927,6 +951,7 @@ export function App(): JSX.Element {
           )}
           {env ? (
             <>
+              <details className="details environment-details"><summary>查看组件与环境详情</summary>
               <table>
                 <thead>
                   <tr>
@@ -1006,7 +1031,8 @@ export function App(): JSX.Element {
                 </pre>
               </details>
 
-              {decision && (
+              </details>
+              {decision && decision.components.some((c) => c.component !== 'route' && !c.component.startsWith('prerequisite:') && c.action !== 'REUSE') && (
                 <div className="decision-list">
                   <h3>安装建议</h3>
                   {decision.components
@@ -1019,15 +1045,10 @@ export function App(): JSX.Element {
                         <b>{c.label}</b>：{c.reason}
                       </p>
                     ))}
-                  {decision.install.length === 0 && decision.modify.length === 0 && (
-                    <p className="muted">已满足要求，无需安装或修改本软件自己的组件。</p>
-                  )}
+
                 </div>
               )}
 
-              <p className="muted">
-                {env.os.caption} · {env.os.arch} · {env.os.admin ? '管理员' : '普通用户'} · 检测时间 {formatTime(env.checkedAt)}
-              </p>
             </>
           ) : (
             <div className="empty">正在读取真实环境…（这一步只读，不会改动任何文件）</div>
@@ -1101,7 +1122,7 @@ export function App(): JSX.Element {
       </div>
 
       <section className="card" hidden={page !== 'deploy'}>
-        <h2>部署助手</h2><div className="row"><button onClick={() => setPage('environment')}>上一步</button><button onClick={() => setPage('model')}>下一步：模型配置</button></div>
+        <h2>部署环境</h2><p className="section-intro">确认部署方案后开始安装。</p><div className="row section-actions"><button onClick={() => setPage('environment')}>上一步</button><button onClick={() => setPage('model')}>下一步：接入 DeepSeek →</button></div>
         <div className="row">
           <button className="primary" onClick={openDeploy} disabled={Boolean(busy) || running}>
             {busy === 'plan' ? '正在生成安装方案…' : task?.status === 'succeeded' ? '重新部署（修复）' : '开始部署'}
@@ -1186,19 +1207,15 @@ export function App(): JSX.Element {
       </section>
 
       <div className="page-group">
-        <section className="card" hidden={page !== 'qq'}>
-          <h2>QQ 接入</h2><div className="row"><button onClick={() => setPage('model')}>上一步</button><button onClick={() => setPage('finish')}>查看使用指南</button></div>
-          <div className="row">
-            <button className={qqTab === 'official' ? 'primary' : ''} onClick={() => setQqTab('official')}>
-              官方 QQ Bot
-            </button>
-            <button className={qqTab === 'personal' ? 'primary' : ''} onClick={() => setQqTab('personal')}>
-              个人 QQ（SnowLuma）
-            </button>
-          </div>
+        <section className="card qq-page" hidden={page !== 'qq'}>
+          <div className="page-section-heading"><div><span className="eyebrow">最后一步</span><h2>QQ 接入</h2></div><button onClick={() => setPage('model')}>返回模型配置</button></div>
           {qqTab === 'personal' && <PersonalQqPanel />}
           {qqTab === 'official' && (
-            <>
+            <div className="qq-route">
+              <div className="route-status"><div><span className="route-kicker">官方 QQ 机器人</span><h3>连接官方机器人</h3><p>准备插件、完成授权，然后检查连接。</p></div><span className={`badge ${qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].cls : ''}`}>{qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].text : '读取中…'}</span></div>
+              {qqMessage && <div className="banner warn" role="status">{qqMessage}</div>}
+              <div className="route-steps" aria-label="官方 QQ 接入步骤">{([['plugin','准备插件'],['auth','配置与授权'],['settings','连接与设置']] as const).map(([key, label], index) => <button key={key} className={`route-step ${officialStep === key ? 'active' : ''}`} aria-current={officialStep === key ? 'step' : undefined} onClick={() => setOfficialStep(key)}><span className="route-step-number">{index + 1}</span><span className="route-step-label">{label}</span></button>)}</div>
+              <div className="route-panel" hidden={officialStep !== 'plugin'}><h3>准备官方 QQ 插件</h3>
           <p className="muted">
             只使用腾讯官方插件与官方授权（QQ Bot API v2）。本软件不实现 QQ 协议、不代替你登录，也不会把凭据上传到任何第三方。
           </p>
@@ -1231,7 +1248,11 @@ export function App(): JSX.Element {
             <button className="primary" onClick={qqRepair} disabled={Boolean(busy)}>
               {busy === 'qq-repair' ? '安装中…' : '安装 / 修复 QQ 插件'}
             </button>
-            <button
+
+          </div>
+
+          <div className="route-actions"><button className="primary" onClick={() => setOfficialStep('auth')}>下一步：配置与授权 →</button></div></div>
+          <div className="route-panel" hidden={officialStep !== 'auth'}><h3>配置与授权</h3><p>在 QQ 开放平台创建机器人，填写凭证或使用官方扫码授权。</p><div className="row">            <button
               onClick={() => qqStartBinding(false)}
               disabled={Boolean(busy) || !qqStatus?.harnessInstalled || Boolean(qqMeta?.bindingMode)}
             >
@@ -1241,9 +1262,7 @@ export function App(): JSX.Element {
               <button onClick={qqCancelBinding} disabled={Boolean(busy)}>
                 {busy === 'qq-cancel' ? '取消中…' : '取消扫码（用已保存的 AppID）'}
               </button>
-            )}
-          </div>
-
+            )}</div>
           {(qqStatus?.phase === 'binding' || (qqStatus?.phase === 'failed' && qqMeta?.bindingMode)) && (
             <div className="banner warn">
               <b>官方扫码授权</b>
@@ -1290,38 +1309,13 @@ export function App(): JSX.Element {
             </div>
           )}
 
-          <h3>授权（AppID / AppSecret）</h3>
-          <div className="row">
-            <input
-              placeholder="AppID（QQ 开放平台 → 机器人 → 开发设置）"
-              value={qqAppId}
-              onChange={(e) => setQqAppId(e.target.value)}
-              size={22}
-            />
-            <input
-              placeholder={qqMeta?.appSecretMask ? `已保存（${qqMeta.appSecretMask}），留空则不变` : 'AppSecret'}
-              value={qqAppSecret}
-              type="password"
-              onChange={(e) => setQqAppSecret(e.target.value)}
-              size={24}
-            />
-            <button className="primary" onClick={qqSaveCredentials} disabled={Boolean(busy) || !qqAppId.trim()}>
-              {busy === 'qq-save' ? '保存中…' : '保存并应用'}
-            </button>
-            {!confirmQqUnbind ? (
-              <button onClick={() => setConfirmQqUnbind(true)} disabled={Boolean(busy) || qqStatus?.credentialSource === 'none'}>
-                解绑…
-              </button>
-            ) : (
-              <button className="danger" onClick={qqDeleteCredentials} disabled={Boolean(busy)}>
-                确认解绑
-              </button>
-            )}
+          <h3>填写机器人凭证</h3>
+          <div className="model-form official-credentials">
+            <label className="form-field"><span>AppID</span><input placeholder="填写机器人 AppID" value={qqAppId} onChange={(e) => setQqAppId(e.target.value)} /></label>
+            <label className="form-field"><span>AppSecret</span><input placeholder={qqMeta?.appSecretMask ? `已保存（${qqMeta.appSecretMask}），留空则不变` : '填写机器人 AppSecret'} value={qqAppSecret} type="password" onChange={(e) => setQqAppSecret(e.target.value)} /></label>
           </div>
-          <p className="muted">
-            凭据只以 Windows DPAPI 密文保存在本机，启动 Harness 时临时注入环境变量（<code>QQBOT_APPID</code>/
-            <code>QQBOT_SECRET</code>），不写入任何明文配置文件，也不进日志与诊断包。
-          </p>
+          <p className="security-note">手动填写的凭据加密保存在本机。</p>
+          <div className="form-actions"><button className="primary" onClick={qqSaveCredentials} disabled={Boolean(busy) || !qqAppId.trim()}>{busy === 'qq-save' ? '保存中…' : '保存并应用'}</button>{!confirmQqUnbind ? <button onClick={() => setConfirmQqUnbind(true)} disabled={Boolean(busy) || qqStatus?.credentialSource === 'none'}>解绑…</button> : <button className="danger" onClick={qqDeleteCredentials} disabled={Boolean(busy)}>确认解绑</button>}</div>
           {qqMeta?.plaintextInProfile && (
             <div className="banner warn">
               <b>注意：</b>官方扫码流程成功后，插件会把 AppID/AppSecret <b>明文写入它自己的 profile 配置</b>
@@ -1334,9 +1328,11 @@ export function App(): JSX.Element {
             </div>
           )}
 
+          <div className="route-actions"><button onClick={() => setOfficialStep('plugin')}>上一步</button><button className="primary" onClick={() => setOfficialStep('settings')}>下一步：连接与设置 →</button></div></div>
+          <div className="route-panel" hidden={officialStep !== 'settings'}><h3>连接与设置</h3><p>查看机器人连接状态；真实消息收发仍需你在 QQ 中测试。</p><div className="row"><span className={`badge ${qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].cls : ''}`}>{qqStatus ? QQ_PHASE_LABEL[qqStatus.phase].text : '读取中…'}</span><button onClick={() => run('qq-refresh', async () => void (await refreshQq(true)))} disabled={Boolean(busy)}>刷新状态</button></div>
           {qqForm && (
-            <>
-              <h3>消息与访问控制（插件真实支持的字段）</h3>
+            <details className="advanced-settings">
+              <summary>消息与访问控制</summary>
               <div className="row">
                 <label>
                   <input
@@ -1471,10 +1467,9 @@ export function App(): JSX.Element {
                   写入 profile 的受管块（<code>im-qqbot</code>），并回读 Harness 组合配置确认生效；失败自动回滚。
                 </span>
               </div>
-            </>
+            </details>
           )}
 
-          {qqMessage && <p className="muted">{qqMessage}</p>}
 
           {qqStatus?.evidence?.length ? (
             <details>
@@ -1496,11 +1491,11 @@ export function App(): JSX.Element {
             </details>
           )}
 
-          <p className="muted">
+          <details className="advanced-settings"><summary>许可与验收说明</summary><p className="muted">
             {QQ_PLUGIN_DISTRIBUTION.notice}真实 QQ 收发（QQ-GATE-01）尚未验收，
             未验证项一律不标记为通过。
-          </p>
-            </>
+          </p></details><div className="route-actions"><button onClick={() => setOfficialStep('auth')}>上一步</button><button onClick={() => setPage('finish')}>查看使用指南</button></div></div>
+            </div>
           )}
         </section>
 
@@ -1524,143 +1519,28 @@ export function App(): JSX.Element {
         </section>
       </div>
 
-      <section className="card" hidden={page !== 'model'}>
-        <h2>模型配置</h2><div className="row"><button onClick={() => setPage('deploy')}>上一步</button><button onClick={() => setPage('qq')}>下一步：QQ 接入</button></div>
-        <p className="muted">
-          软件本身不提供、也不代理模型服务。请用你自己的 API Key：打开服务商控制台（DeepSeek 为
-          platform.deepseek.com →「API keys」），创建一个 Key 后粘贴到下面。费用由服务商按用量收取。
-          密钥只保存在本机（Windows DPAPI 加密），不会上传，也不会出现在日志或诊断包里。
-        </p>
+      <section className="card model-page" hidden={page !== 'model'}>
+        <div className="form-heading"><div><h2>接入 DeepSeek</h2><p>填写模型服务的 API Key，费用由服务商按用量收取。</p></div><span className={`badge ${apiStatusView?.configured ? 'ok' : 'warn'}`}>{apiStatusView?.configured ? '已配置' : '未配置'}</span></div>
 
         {apiForm && (
           <>
-            <div className="row">
-              <span className="muted">服务类型</span>
-              <select
-                value={apiForm.template}
-                onChange={(e) => {
-                  const template = e.target.value as ApiProviderView['template'];
-                  if (template === 'deepseek' && boot) {
-                    setApiForm(boot.apiTemplate);
-                  } else {
-                    setApiForm({
-                      template: 'openai-compatible',
-                      label: '我的模型服务',
-                      protocol: 'openai-completions',
-                      baseUrl: 'https://',
-                      model: '',
-                      credentialRef: 'DDA_GATEWAY_KEY',
-                      contextWindow: 131072,
-                    });
-                  }
-                  setTestResult(undefined);
-                  setSaveMessage(undefined);
-                }}
-                disabled={Boolean(busy)}
-              >
-                <option value="deepseek">DeepSeek 官方（推荐，已预填）</option>
-                <option value="openai-compatible">其它兼容 OpenAI 的服务</option>
-              </select>
-              <span className="muted">名称</span>
-              <input
-                value={apiForm.label}
-                onChange={(e) => setApiForm({ ...apiForm, label: e.target.value })}
-                disabled={Boolean(busy)}
-              />
+            <div className="model-form">
+              <label className="form-field"><span>服务类型</span><select value={apiForm.template} disabled={Boolean(busy)} onChange={(e) => {
+                const template = e.target.value as ApiProviderView['template'];
+                if (template === 'deepseek' && boot) setApiForm(boot.apiTemplate);
+                else setApiForm({ template: 'openai-compatible', label: '我的模型服务', protocol: 'openai-completions', baseUrl: 'https://', model: '', credentialRef: 'DDA_GATEWAY_KEY', contextWindow: 131072 });
+                setTestResult(undefined); setSaveMessage(undefined);
+              }}><option value="deepseek">DeepSeek 官方（推荐）</option><option value="openai-compatible">其他兼容 OpenAI 的服务</option></select></label>
+              <label className="form-field"><span>名称</span><input value={apiForm.label} onChange={(e) => { setApiForm({ ...apiForm, label: e.target.value }); setTestResult(undefined); }} disabled={Boolean(busy)} /></label>
+              <label className="form-field"><span>接口地址</span><input value={apiForm.baseUrl} onChange={(e) => { setApiForm({ ...apiForm, baseUrl: e.target.value }); setTestResult(undefined); }} readOnly={apiForm.template === 'deepseek'} disabled={Boolean(busy)} /></label>
+              <label className="form-field"><span>模型名称</span>{apiForm.template === 'deepseek' && boot ? <select value={apiForm.model} onChange={(e) => { setApiForm({ ...apiForm, model: e.target.value }); setTestResult(undefined); }} disabled={Boolean(busy)}>{boot.apiModels.map((model) => <option key={model.id} value={model.id}>{model.id}（{model.name}）</option>)}</select> : <input placeholder="例如 deepseek-chat" value={apiForm.model} onChange={(e) => { setApiForm({ ...apiForm, model: e.target.value }); setTestResult(undefined); }} disabled={Boolean(busy)} />}</label>
+              <label className="form-field form-field-wide"><span>API Key</span><input type="password" placeholder={keyMask ? `已保存：${keyMask}（留空表示不修改）` : '粘贴你的 API Key'} value={apiKey} onChange={(e) => { setApiKey(e.target.value); setTestResult(undefined); }} autoComplete="off" disabled={Boolean(busy)} /></label>
             </div>
-
-            <div className="row">
-              <span className="muted">接口地址</span>
-              <input
-                value={apiForm.baseUrl}
-                onChange={(e) => setApiForm({ ...apiForm, baseUrl: e.target.value })}
-                readOnly={apiForm.template === 'deepseek'}
-                disabled={Boolean(busy)}
-              />
-              <span className="muted">模型</span>
-              {apiForm.template === 'deepseek' && boot ? (
-                <select
-                  value={apiForm.model}
-                  onChange={(e) => setApiForm({ ...apiForm, model: e.target.value })}
-                  disabled={Boolean(busy)}
-                >
-                  {boot.apiModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.id}（{model.name}）
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  placeholder="例如 gpt-4o-mini 或 deepseek-chat"
-                  value={apiForm.model}
-                  onChange={(e) => setApiForm({ ...apiForm, model: e.target.value })}
-                  disabled={Boolean(busy)}
-                />
-              )}
-            </div>
-
-            <div className="row">
-              <input
-                type="password"
-                placeholder={keyMask ? `已保存：${keyMask}（留空表示不修改）` : '粘贴 API Key（通常以 sk- 开头）'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                autoComplete="off"
-                disabled={Boolean(busy)}
-              />
-              <button
-                onClick={() =>
-                  run('api-test', async () => {
-                    const result = await api.apiTest({ config: apiForm, apiKey: apiKey || undefined });
-                    setTestResult(result);
-                    setSaveMessage(undefined);
-                  })
-                }
-                disabled={Boolean(busy)}
-              >
-                {busy === 'api-test' ? '测试中…' : '测试连接'}
-              </button>
-              <button
-                className="primary"
-                onClick={() =>
-                  run('api-save', async () => {
-                    const result = await api.apiSave({ config: apiForm, apiKey: apiKey || undefined });
-                    setSaveMessage(result.message);
-                    if (result.status) {
-                      setApiStatusView(result.status);
-                      setKeyMask(result.status.keyMask);
-                      if (result.status.config) setApiForm(result.status.config);
-                    }
-                    if (result.ok) setApiKey('');
-                    else setTestResult(undefined);
-                  })
-                }
-                disabled={Boolean(busy) || (!apiKey && !keyMask)}
-              >
-                {busy === 'api-save' ? '保存中…' : '保存并应用'}
-              </button>
-              <button
-                onClick={() => setConfirmApiDelete(true)}
-                disabled={Boolean(busy) || !apiStatusView?.configured}
-              >
-                删除配置
-              </button>
-            </div>
-
-            <p className="muted">
-              保存后会自动写入 Harness 的模型配置并回读校验（只改软件自己的配置块，不会动你其它设置）。
-              当前状态：
-              {apiStatusView?.configured ? (
-                <span className="badge ok">已配置 {keyMask ?? ''}</span>
-              ) : (
-                <span className="badge warn">未配置</span>
-              )}
-              {apiStatusView && !apiStatusView.harnessInstalled && (
-                <span className="muted"> · 尚未部署 Harness，配置会在部署后生效</span>
-              )}
-            </p>
-
+            <p className="security-note">密钥加密保存在本机。DeepSeek 用户可在服务商控制台创建 API Key。</p>
+            {apiStatusView && !apiStatusView.harnessInstalled && <p className="security-note">助手程序尚未部署，配置将在部署后生效。</p>}
+            <div className="form-actions"><button onClick={() => run('api-test', async () => { const result = await api.apiTest({ config: apiForm, apiKey: apiKey || undefined }); setTestResult(result); setSaveMessage(undefined); })} disabled={Boolean(busy)}>{busy === 'api-test' ? '测试中…' : '测试连接'}</button>
+              <button className="primary" onClick={() => run('api-save', async () => { const result = await api.apiSave({ config: apiForm, apiKey: apiKey || undefined }); setSaveMessage(result.message); if (result.status) { setApiStatusView(result.status); setKeyMask(result.status.keyMask); if (result.status.config) setApiForm(result.status.config); } if (result.ok) setApiKey(''); else setTestResult(undefined); })} disabled={Boolean(busy) || (!apiKey && !keyMask)}>{busy === 'api-save' ? '保存中…' : '保存并应用'}</button>
+              <button onClick={() => setConfirmApiDelete(true)} disabled={Boolean(busy) || !apiStatusView?.configured}>删除配置</button></div>
             {testResult && (
               <div className="modal-body">
                 <p>
@@ -1676,17 +1556,11 @@ export function App(): JSX.Element {
                     {testResult.harness.ok ? '已生效（模型与服务均被识别）' : `未通过 — ${testResult.harness.problems.join('；')}`}
                   </p>
                 )}
-                <pre className="evidence">
-                  {testResult.steps
-                    .map((step) => `${step.ok ? '✓' : '✗'} ${step.stage}  ${step.millis}ms  ${step.detail}`)
-                    .join('\n')}
-                </pre>
+                <details><summary>查看测试详情</summary><pre className="evidence">{testResult.steps.map((step) => `${step.ok ? '✓' : '✗'} ${step.stage}  ${step.millis}ms  ${step.detail}`).join('\n')}</pre></details>
               </div>
             )}
             {saveMessage && <p className="muted">{saveMessage}</p>}
-            <p className="muted">
-              配置位置：<code>{apiStatusView?.patchPath}</code> · 密钥：仅本机 DPAPI 加密保存（启动 Harness 时临时注入，不写入任何明文文件）
-            </p>
+            <div className="wizard-footer"><button onClick={() => setPage('deploy')}>上一步</button><button className="primary" onClick={() => setPage('qq')}>下一步：QQ 接入 →</button></div>
           </>
         )}
 
@@ -1759,6 +1633,7 @@ export function App(): JSX.Element {
               <>
                 <p>请确认以下内容。点「确认并开始部署」之前，不会下载或修改任何文件。</p>
                 <div className="modal-body">
+                  <p><b>QQ 接入方式：</b>{qqMode === 'personal' ? '个人 QQ：用户自行安装 SnowLuma，不安装官方 QQ 插件' : '官方 QQ：安装官方机器人插件'}</p>
                   <p>
                     <b>本次会安装：</b>
                     {deployPlan.install.length ? deployPlan.install.join('、') : '无'}
