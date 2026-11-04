@@ -1012,8 +1012,35 @@ export function App(): JSX.Element {
   const failure = failureCategory(task?.error);
   const stage = running ? currentStep ?? '准备中' : undefined;
 
+  /**
+   * §21.12 屏幕阅读器播报：只在**步骤状态变化**时更新，不跟着进度百分比刷屏。
+   * 单个 polite 区域既能被 NVDA/Narrator 读出，又不会打断用户当前朗读内容。
+   */
+  const [announcement, setAnnouncement] = useState('');
+  const announcedRef = useRef('');
+  useEffect(() => {
+    const runningStep = steps.find((s) => s.status === 'running');
+    const failedStep = steps.find((s) => s.status === 'failed');
+    let message = '';
+    if (runningStep) {
+      message = `第 ${steps.indexOf(runningStep) + 1}/${steps.length} 步：${runningStep.title}，进行中`;
+    } else if (failedStep) {
+      message = `第 ${steps.indexOf(failedStep) + 1}/${steps.length} 步：${failedStep.title}，失败`;
+    } else if (task?.status !== undefined) {
+      message = `任务${TASK_LABEL[task.status] ?? task.status}，已完成 ${completedSteps}/${steps.length} 步`;
+    }
+    if (message !== '' && message !== announcedRef.current) {
+      announcedRef.current = message;
+      setAnnouncement(message);
+    }
+  }, [steps, task?.status, completedSteps]);
+
   return (
     <div className="app">
+      {/* §21.12：屏幕阅读器实时区域（视觉隐藏，仅按步骤状态变化更新） */}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-live="deploy-progress">
+        {announcement}
+      </div>
       <div className="window-titlebar" aria-hidden="true" />
       <header className="brand"><img className="brand-mark" src={new URL('./assets/app-icon.svg', import.meta.url).href} alt="" /><div><h1>DeepSeek</h1><span>部署助手</span></div></header>
       <nav className="navigation" aria-label="主导航">{([['home','选择接入方式'],['environment','部署向导'],['finish','使用指南'],['diagnostics','故障诊断']] as const).map(([id,label]) => <button key={id} className={(page === id || (id === 'environment' && ['deploy','model','qq'].includes(page))) ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id === 'environment' && !qqMode ? 'home' : id)}>{label}</button>)}</nav>
@@ -1054,12 +1081,12 @@ export function App(): JSX.Element {
           “重试这一步”只重跑它（成功后停下），或点“重试失败步骤”一步到位继续；也可以先点“回滚本次创建…”清理本次部署产物。
         </div>
       )}
-      {notice && <div className="banner ok">{notice}</div>}
+      {notice && <div className="banner ok" role="status">{notice}</div>}
 
       {error && (
         <div className="card">
           <h2>错误</h2>
-          <div className="error">{error}</div>
+          <div className="error" role="alert">{error}</div>
           <p>请检查错误信息后重试；如果问题持续，可导出脱敏诊断报告联系支持人员。</p><button onClick={() => setPage('diagnostics')}>打开故障诊断</button>
         </div>
       )}
@@ -1724,8 +1751,8 @@ export function App(): JSX.Element {
 
         {confirmApiDelete && (
           <div className="modal-backdrop">
-            <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
-              <h2>删除 API 配置？</h2>
+            <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabIndex={-1} ref={modalRef}>
+              <h2 id="modal-heading">删除 API 配置？</h2>
               <p>会删除本机加密保存的密钥，并移除软件写入 Harness 的模型配置块。你其它的 Harness 设置不会被改动。</p>
               <div className="row">
                 <button
@@ -1856,8 +1883,8 @@ export function App(): JSX.Element {
 
       {modal === 'cancel' && (
         <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
-            <h2>取消部署？</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabIndex={-1} ref={modalRef}>
+            <h2 id="modal-heading">取消部署？</h2>
             <p>任务会立即停止（当前步骤完成后生效）。已完成的步骤会保留，可稍后“继续”。</p>
             <div className="modal-body">
               <label className="row">
@@ -1891,8 +1918,8 @@ export function App(): JSX.Element {
 
       {modal === 'rollback' && (
         <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
-            <h2>回滚本次部署创建的内容？</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabIndex={-1} ref={modalRef}>
+            <h2 id="modal-heading">回滚本次部署创建的内容？</h2>
             <p>
               这会<strong>永久删除</strong>本次部署任务记录在案的产物（Node 运行时、pnpm、Harness 安装目录、下载缓存等）。
               删除后 Harness 将无法启动，需要重新部署。
@@ -1912,7 +1939,8 @@ export function App(): JSX.Element {
                 你自己的 Harness profile、API 配置、QQ 凭据与其他数据不在删除范围内；无法确认归属的路径一律保留。
               </p>
               <p className="muted">
-                回滚完成后可以直接点「开始部署」重新安装：下载与包缓存会保留，通常比第一次快。
+                回滚完成后可以直接点「开始部署」重新安装。注意：本次下载的 Node 压缩包会随回滚一起删除，
+                但 pnpm 的包存储不受影响，多数依赖无需重新下载。
               </p>
             </div>
             <div className="row">
@@ -1933,8 +1961,8 @@ export function App(): JSX.Element {
 
       {modal === 'recovery' && (
         <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
-            <h2>回到上一可用状态？</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabIndex={-1} ref={modalRef}>
+            <h2 id="modal-heading">回到上一可用状态？</h2>
             <p>
               这会用备份里的 <b>4 个 profile 声明文件</b>覆盖当前 Harness profile，并按备份的 lockfile
               重建依赖。<strong>恢复前会先自动备份当前状态</strong>，所以这次操作本身也能撤回。
@@ -1997,8 +2025,8 @@ export function App(): JSX.Element {
 
       {modal === 'diag' && (
         <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true" tabIndex={-1} ref={modalRef}>
-            <h2>导出诊断报告</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabIndex={-1} ref={modalRef}>
+            <h2 id="modal-heading">导出诊断报告</h2>
             <p className="muted">{diagPreview?.warning}</p>
             <div className="modal-body">
               <p>

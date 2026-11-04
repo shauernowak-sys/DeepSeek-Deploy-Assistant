@@ -1,4 +1,4 @@
-/**
+﻿/**
  * §21.12 可访问性走查：三档缩放（100% / 125% / 150%）+ 仅键盘可达性。
  *
  *   node scripts/m4-a11y-ui-smoke.mjs
@@ -96,8 +96,7 @@ async function findPage(port) {
   throw new Error(`port ${port} 没有可调试页面`);
 }
 
-async function connect(port) {
-  const page = await findPage(port);
+async function connect(port) {  const page = await findPage(port);
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   let id = 0;
   const pending = new Map();
@@ -145,6 +144,63 @@ async function pressKey(send, name) {
   await wait(120);
 }
 
+/**
+ * 无障碍树校验（CDP `Accessibility` 域）：
+ * 这是"屏幕阅读器会读到什么"的可复现代理，**不等于** Narrator/NVDA 实测，
+ * 但它能抓出"按钮没有名字""弹窗没有标题""live 区域不存在"这类必然读不出来的问题。
+ */
+async function axNodes(send) {
+  await send('Accessibility.enable');
+  const { nodes } = await send('Accessibility.getFullAXTree', {});
+  return nodes.filter((node) => node.ignored !== true);
+}
+
+function axRole(node) {
+  return node.role?.value ?? '';
+}
+
+function axName(node) {
+  return (node.name?.value ?? '').trim();
+}
+
+function axProperty(node, name) {
+  const found = (node.properties ?? []).find((property) => property.name === name);
+  return found?.value?.value;
+}
+
+async function assertAccessibilityTree(send, phase, evaluate) {
+  const nodes = await axNodes(send);
+  const buttons = nodes.filter((node) => axRole(node) === 'button');
+  const unnamed = buttons.filter((node) => axName(node) === '');
+  assert(unnamed.length === 0, `[${phase}] 有 ${unnamed.length} 个按钮没有可访问名称`);
+
+  const live = nodes.filter((node) => ['status', 'alert'].includes(axRole(node)));
+  assert(live.length > 0, `[${phase}] 无障碍树里没有任何 status/alert 实时区域`);
+  const polite = live.find((node) => axProperty(node, 'live') === 'polite');
+  let liveText = '';
+  if (phase === 'page') {
+    assert(polite !== undefined, `[${phase}] 没有 live=polite 的实时区域（部署进度读不出来）`);
+    assert(axProperty(polite, 'atomic') === true, `[${phase}] 实时区域不是 aria-atomic`);
+    // role=status 的可访问名称本来就是空，读屏读的是它的**内容**，所以这里查 DOM 文本。
+    const domText = await evaluate(
+      `(() => document.querySelector('[data-live="deploy-progress"]')?.textContent ?? '')()`,
+    );
+    liveText = String(domText).trim();
+    assert(liveText !== '', `[${phase}] 实时区域没有内容（预置失败任务应已产生一条播报）`);
+    assert(/步/u.test(liveText), `[${phase}] 实时区域内容不像进度播报：${liveText}`);
+  }
+
+  const dialog = nodes.filter((node) => axRole(node) === 'dialog');
+  if (phase === 'modal') {
+    assert(dialog.length === 1, `[${phase}] 无障碍树里应有 1 个 dialog，实际 ${dialog.length}`);
+    assert(axName(dialog[0]) !== '', `[${phase}] dialog 没有可访问名称（读屏只会说"对话框"）`);
+    assert(axProperty(dialog[0], 'modal') === true, `[${phase}] dialog 缺少 modal 语义`);
+  } else {
+    assert(dialog.length === 0, `[${phase}] 未打开弹窗时不应存在 dialog 节点`);
+  }
+  return { buttons: buttons.length, dialogueName: dialog[0] ? axName(dialog[0]) : '', live: liveText };
+}
+
 /** 当前焦点元素的标签 + 是否有可见焦点指示（outline 或 box-shadow）。 */
 const FOCUS_PROBE = `(() => {
   const el = document.activeElement;
@@ -177,6 +233,9 @@ async function runScale(electronPath, scaleConfig, index) {
 
     const lang = await evaluate('document.documentElement.lang');
     assert(lang.toLowerCase().startsWith('zh'), `界面语言不是中文：${lang}`);
+
+    // 无障碍树：按钮名称、live 区域（预置失败任务应已产生一条播报）
+    const pageAx = await assertAccessibilityTree(send, 'page', evaluate);
 
     const homeOverflow = await evaluate(
       '(() => ({ w: window.innerWidth, s: document.documentElement.scrollWidth }))()',
@@ -293,6 +352,9 @@ async function runScale(electronPath, scaleConfig, index) {
       `Tab 从弹窗跑到了背景：${escaped.map((s) => s.label).join(' / ') || '(无)'}（共 ${modalStops.length} 次）`,
     );
 
+    // 无障碍树：dialog 有名称且是 modal
+    const modalAx = await assertAccessibilityTree(send, 'modal', evaluate);
+
     const shotModal = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(resolve(outDir, scaleConfig.file.replace('.png', '-modal.png')), Buffer.from(shotModal.data, 'base64'));
 
@@ -311,7 +373,8 @@ async function runScale(electronPath, scaleConfig, index) {
 
     console.log(
       `scale=${scaleConfig.scale} dpr=${dpr} lang=${lang} focus_stops=${stops.length} ringless=0 ` +
-        `overflow=none modal_ok=yes esc_closes=yes screenshot=${scaleConfig.file}`,
+        `overflow=none modal_ok=yes esc_closes=yes ` +
+        `ax_buttons=${pageAx.buttons} live="${pageAx.live}" dialog="${modalAx.dialogueName}" screenshot=${scaleConfig.file}`,
     );
     ws.close();
   } finally {
