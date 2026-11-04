@@ -19,12 +19,96 @@ interface TaskSummary {
   pausedByUser?: boolean;
 }
 
+interface ComponentCheckView {
+  id: string;
+  label: string;
+  required: string;
+  state: string;
+  diagnosis: string;
+  version?: string;
+  path?: string;
+  detail: string;
+  checkedAt: string;
+  candidates: { path: string; version?: string; runnable: boolean; stable: boolean; onPathOrder?: number; error?: string }[];
+  evidence: { signal: string; ok: boolean; raw: string }[];
+}
+
+interface PrerequisiteView {
+  id: string;
+  label: string;
+  ok: boolean;
+  state: string;
+  detail: string;
+  evidence: { signal: string; ok: boolean; raw: string }[];
+}
+
 interface EnvReport {
-  os: { caption: string; arch: string; admin: boolean };
+  os: { caption: string; arch: string; admin: boolean; build?: string };
   diskFreeBytes: number;
   runtimes: { id: string; installed: boolean; version?: string; path?: string }[];
   route: { kind: string; evidence: { signal: string; ok: boolean; raw: string }[]; dshHome?: string };
   checkedAt: string;
+  scanId: string;
+  components: ComponentCheckView[];
+  prerequisites: PrerequisiteView[];
+  probeErrors: { probe: string; message: string }[];
+  resolution: {
+    pathNode?: { path: string; version?: string };
+    reusableSystemNode?: { path: string; version: string };
+    managedNode?: { path: string; version?: string };
+    reusableSystemHarness?: { path: string; binPath: string; version: string };
+    profiles: { home: string; homeExists: boolean; webExists: boolean; desktopExists: boolean };
+  };
+}
+
+interface ComponentDecisionView {
+  component: string;
+  label: string;
+  action: string;
+  state: string;
+  current?: { version?: string; path?: string };
+  target?: { version?: string; path?: string };
+  reason: string;
+  impacts: string[];
+  requiresNetwork: boolean;
+  requiresAdmin: boolean;
+  recovery: string;
+}
+
+interface DecisionOptionView {
+  id: string;
+  label: string;
+  description: string;
+  preferences: Record<string, unknown>;
+}
+
+interface DecisionView {
+  planId: string;
+  generatedAt: string;
+  overall: string;
+  deployable: boolean;
+  blocked: boolean;
+  needsChoice: boolean;
+  requiresAdmin: boolean;
+  requiresNetwork: boolean;
+  install: string[];
+  reuse: string[];
+  modify: string[];
+  untouched: string[];
+  blockers: string[];
+  warnings: string[];
+  recovery: string;
+  options: DecisionOptionView[];
+  components: ComponentDecisionView[];
+  runtime: {
+    node: { mode: string; exe: string; version?: string };
+    harness: { mode: string; bin?: string; version?: string };
+  } | null;
+}
+
+interface InspectionView {
+  environment: EnvReport;
+  decision: DecisionView;
 }
 
 interface HealthReport {
@@ -233,8 +317,9 @@ const QQ_PHASE_LABEL: Record<QqPhaseView, { text: string; cls: string }> = {
 
 type Api = {
   bootstrap: () => Promise<Bootstrap>;
-  scanEnv: () => Promise<EnvReport>;
-  startDeploy: (fresh?: boolean) => Promise<{ taskId: string }>;
+  inspectEnv: (preferences?: Record<string, unknown>) => Promise<InspectionView>;
+  decideEnv: (preferences?: Record<string, unknown>) => Promise<DecisionView>;
+  startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean }) => Promise<{ taskId: string }>;
   resumeDeploy: (taskId: string) => Promise<{ taskId: string }>;
   taskStatus: (taskId: string) => Promise<TaskSummary | undefined>;
   pauseDeploy: (taskId: string) => Promise<TaskSummary | undefined>;
@@ -302,6 +387,54 @@ const HEALTH_LABEL: Record<HealthReport['level'], { text: string; cls: string; h
   usable: { text: '可用', cls: 'ok', hint: '已返回应用外壳' },
 };
 
+const STATE_LABEL: Record<string, { text: string; cls: string }> = {
+  installed: { text: '已安装', cls: 'ok' },
+  missing: { text: '未安装', cls: 'warn' },
+  'version-mismatch': { text: '版本不符', cls: 'bad' },
+  'upgrade-required': { text: '需升级', cls: 'warn' },
+  'probe-failed': { text: '检测失败', cls: 'bad' },
+};
+
+const DECISION_LABEL: Record<string, { text: string; cls: string }> = {
+  INSTALL: { text: '需要安装', cls: 'warn' },
+  REUSE: { text: '可以复用', cls: 'ok' },
+  UPGRADE: { text: '需要升级', cls: 'warn' },
+  REPAIR: { text: '需要修复', cls: 'bad' },
+  BLOCKED: { text: '禁止继续', cls: 'bad' },
+  CONFIRM_REQUIRED: { text: '需要你确认', cls: 'warn' },
+};
+
+const PREREQ_LABEL: Record<string, string> = {
+  supported: '支持',
+  unsupported: '不支持',
+  sufficient: '充足',
+  insufficient: '不足',
+  standard: '普通用户（正常）',
+  elevated: '管理员（本软件不需要）',
+  writable: '可写',
+  unwritable: '不可写',
+  'primary-available': '主源可用',
+  'mirror-only': '仅镜像可用',
+  unavailable: '均不可用',
+};
+
+function decisionHeadline(decision: DecisionView): string {
+  if (decision.blocked) return '暂时不能自动部署：请先处理下面的阻塞项。';
+  if (decision.needsChoice) return '检测已完成，需要你先选择使用哪一套运行环境。';
+  if (decision.install.length === 0 && decision.modify.length === 0) return '当前环境已满足要求，无需重复安装。';
+  if (decision.install.length > 0) return `可以开始部署：将安装 ${decision.install.join('、')}。`;
+  return '可以开始部署：将修复/升级本软件自己的组件。';
+}
+
+function formatTime(iso?: string): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 /** Maps engine error text to a user-facing failure category. */
 function failureCategory(message?: string): { label: string; hint: string; cls: string } | undefined {
   if (!message) return undefined;
@@ -336,6 +469,8 @@ export function App(): JSX.Element {
   const api = window.dda;
   const [boot, setBoot] = useState<Bootstrap>();
   const [env, setEnv] = useState<EnvReport>();
+  const [decision, setDecision] = useState<DecisionView>();
+  const [deployPlan, setDeployPlan] = useState<DecisionView>();
   const [qqTab, setQqTab] = useState<'official' | 'personal'>('official');
   const [task, setTask] = useState<TaskSummary>();
   const [info, setInfo] = useState<HarnessInfo>();
@@ -354,7 +489,7 @@ export function App(): JSX.Element {
   const [saveMessage, setSaveMessage] = useState<string>();
   const [confirmApiDelete, setConfirmApiDelete] = useState(false);
   const [stepOverrides, setStepOverrides] = useState<Record<string, string>>({});
-  const [modal, setModal] = useState<'cancel' | 'diag' | 'rollback' | null>(null);
+  const [modal, setModal] = useState<'cancel' | 'diag' | 'rollback' | 'deploy' | null>(null);
   const [cancelPreview, setCancelPreview] = useState<CancelPreview>();
   const [rollbackPreview, setRollbackPreview] = useState<RollbackPreviewView>();
   const [cleanupOnCancel, setCleanupOnCancel] = useState(true);
@@ -385,6 +520,14 @@ export function App(): JSX.Element {
         const i = await api.harnessInfo();
         setInfo(i);
         setPlugins(i.plugins);
+        // 只读检测放到后台，避免网络探测拖慢首屏；结果回来后立即刷新。
+        void api
+          .inspectEnv()
+          .then((inspection) => {
+            setEnv(inspection.environment);
+            setDecision(inspection.decision);
+          })
+          .catch((e: unknown) => setError(readableError(e)));
       } catch (e) {
         setError(String(e));
       }
@@ -459,8 +602,40 @@ export function App(): JSX.Element {
 
   const scan = () =>
     run('scan', async () => {
-      setEnv(await api.scanEnv());
+      const inspection = await api.inspectEnv();
+      setEnv(inspection.environment);
+      setDecision(inspection.decision);
     });
+
+  const openDeploy = () =>
+    run('plan', async () => {
+      const inspection = await api.inspectEnv();
+      setEnv(inspection.environment);
+      setDecision(inspection.decision);
+      if (inspection.decision.blocked) {
+        setError(`暂时不能部署：${inspection.decision.blockers.join('；')}`);
+        return;
+      }
+      setDeployPlan(inspection.decision);
+      setModal('deploy');
+    });
+
+  const choosePlan = (option: DecisionOptionView) =>
+    run('choose', async () => {
+      const next = await api.decideEnv(option.preferences);
+      setDecision(next);
+      if (next.blocked) {
+        setError(`暂时不能部署：${next.blockers.join('；')}`);
+        return;
+      }
+      setDeployPlan(next);
+    });
+
+  const cancelDeployPlan = () => {
+    setModal(null);
+    setDeployPlan(undefined);
+    setNotice('已取消；没有执行任何安装、下载或修改。');
+  };
 
   const waitForSettled = async (taskId: string) => {
     let current = await api.taskStatus(taskId);
@@ -475,10 +650,23 @@ export function App(): JSX.Element {
 
   const deploy = () =>
     run('deploy', async () => {
+      if (!deployPlan) {
+        setError('没有可执行的安装方案，请先完成环境检测。');
+        return;
+      }
       setProgress(0);
       setNotice(undefined);
-      const { taskId } = await api.startDeploy(task?.status === 'succeeded');
+      const { taskId } = await api.startDeploy({
+        planId: deployPlan.planId,
+        confirmed: true,
+        fresh: task?.status === 'succeeded',
+      });
+      setModal(null);
+      setDeployPlan(undefined);
       await waitForSettled(taskId);
+      const inspection = await api.inspectEnv();
+      setEnv(inspection.environment);
+      setDecision(inspection.decision);
     });
 
   const resume = () =>
@@ -546,7 +734,9 @@ export function App(): JSX.Element {
         setError(`${result.refused.length} 个路径无法确认归属，已保留：\n${result.refused.map((r) => `${r.path}（${r.reason ?? '未知原因'}）`).join('\n')}`);
       }
       // 回滚会改变磁盘上的真实状态，必须重新读取环境与部署信息，而不是只改文案。
-      setEnv(await api.scanEnv());
+      const inspection = await api.inspectEnv();
+      setEnv(inspection.environment);
+      setDecision(inspection.decision);
       await refreshInfo();
     });
 
@@ -692,11 +882,32 @@ export function App(): JSX.Element {
           <h2>1. 环境检测</h2>
           <div className="row">
             <button onClick={scan} disabled={Boolean(busy)}>
-              {busy === 'scan' ? '检测中…' : '检测环境'}
+              {busy === 'scan' ? '检测中…' : '重新检测'}
             </button>
+            {decision && (
+              <span className={`badge ${DECISION_LABEL[decision.overall]?.cls ?? ''}`}>
+                结论：{DECISION_LABEL[decision.overall]?.text ?? decision.overall}
+              </span>
+            )}
             {env && <span className={`badge ${routeClass}`}>路线：{env.route.kind}</span>}
             {env && <span className="muted">磁盘可用 {(env.diskFreeBytes / 1024 ** 3).toFixed(1)} GB</span>}
           </div>
+          <p className="muted">这一步只读，不会修改你的电脑，也不会安装任何软件。</p>
+          {decision && <p><b>{decisionHeadline(decision)}</b></p>}
+          {decision && decision.blockers.length > 0 && (
+            <div className="banner bad">
+              {decision.blockers.map((b) => (
+                <div key={b}>{b}</div>
+              ))}
+            </div>
+          )}
+          {decision && decision.warnings.length > 0 && (
+            <div className="banner warn">
+              {decision.warnings.map((w) => (
+                <div key={w}>{w}</div>
+              ))}
+            </div>
+          )}
           {env ? (
             <>
               <table>
@@ -705,27 +916,104 @@ export function App(): JSX.Element {
                     <th>组件</th>
                     <th>状态</th>
                     <th>版本</th>
+                    <th>要求</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {env.runtimes.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.id}</td>
-                      <td>{r.installed ? '已就绪' : '未安装'}</td>
-                      <td>{r.version ?? '—'}</td>
+                  {env.components.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.label}</td>
+                      <td>
+                        <span className={`badge ${STATE_LABEL[c.state]?.cls ?? ''}`}>
+                          {STATE_LABEL[c.state]?.text ?? c.state}
+                        </span>
+                      </td>
+                      <td>{c.version ?? '—'}</td>
+                      <td className="muted">{c.required}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              <div className="row wrap">
+                {env.prerequisites.map((p) => (
+                  <span key={p.id} className={`badge ${p.ok ? 'ok' : 'bad'}`} title={p.detail}>
+                    {p.label}：{PREREQ_LABEL[p.state] ?? p.state}
+                  </span>
+                ))}
+              </div>
+
+              <details className="details">
+                <summary>检测详情与证据（版本 / 路径 / 时间 / 原因）</summary>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>组件</th>
+                      <th>实际版本</th>
+                      <th>安装路径</th>
+                      <th>检测时间</th>
+                      <th>说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {env.components.map((c) => (
+                      <tr key={c.id}>
+                        <td>{c.label}</td>
+                        <td>{c.version ?? '—'}</td>
+                        <td className="path">{c.path ?? '—'}</td>
+                        <td>{formatTime(c.checkedAt)}</td>
+                        <td>{c.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {env.probeErrors.length > 0 && (
+                  <div className="banner warn">
+                    以下检测未能完成（不会被当作「未安装」）：
+                    {env.probeErrors.map((e) => `${e.probe}: ${e.message}`).join('；')}
+                  </div>
+                )}
+                <p className="muted">
+                  Harness 配置目录：{env.resolution.profiles.home || '—'}（其存在：
+                  {env.resolution.profiles.homeExists ? '是' : '否'}；web profile：
+                  {env.resolution.profiles.webExists ? '已创建' : '未创建'}；desktop profile：
+                  {env.resolution.profiles.desktopExists ? '存在（不修改）' : '不存在'}）
+                </p>
+                <pre className="evidence">
+                  {env.components
+                    .map((c) => `# ${c.label}\n${c.evidence.map((e) => `${e.ok ? '✓' : '✗'} ${e.signal} = ${e.raw}`).join('\n')}`)
+                    .join('\n\n')}
+                </pre>
+                <pre className="evidence">
+                  {env.route.evidence.map((e) => `${e.ok ? '✓' : '✗'} ${e.signal} = ${e.raw}`).join('\n')}
+                </pre>
+              </details>
+
+              {decision && (
+                <div className="decision-list">
+                  <h3>安装建议</h3>
+                  {decision.components
+                    .filter((c) => c.component !== 'route' && !c.component.startsWith('prerequisite:') && c.action !== 'REUSE')
+                    .map((c) => (
+                      <p key={c.component}>
+                        <span className={`badge ${DECISION_LABEL[c.action]?.cls ?? ''}`}>
+                          {DECISION_LABEL[c.action]?.text ?? c.action}
+                        </span>{' '}
+                        <b>{c.label}</b>：{c.reason}
+                      </p>
+                    ))}
+                  {decision.install.length === 0 && decision.modify.length === 0 && (
+                    <p className="muted">已满足要求，无需安装或修改本软件自己的组件。</p>
+                  )}
+                </div>
+              )}
+
               <p className="muted">
-                {env.os.caption} · {env.os.arch} · {env.os.admin ? '管理员' : '普通用户'}
+                {env.os.caption} · {env.os.arch} · {env.os.admin ? '管理员' : '普通用户'} · 检测时间 {formatTime(env.checkedAt)}
               </p>
-              <pre className="evidence">
-                {env.route.evidence.map((e) => `${e.ok ? '✓' : '✗'} ${e.signal} = ${e.raw}`).join('\n')}
-              </pre>
             </>
           ) : (
-            <div className="empty">尚未检测。检测只读，不会改动任何文件。</div>
+            <div className="empty">正在读取真实环境…（这一步只读，不会改动任何文件）</div>
           )}
         </section>
 
@@ -798,8 +1086,8 @@ export function App(): JSX.Element {
       <section className="card">
         <h2>3. 部署（Node → pnpm → Harness → web profile → QQ 插件）</h2>
         <div className="row">
-          <button className="primary" onClick={deploy} disabled={Boolean(busy) || running}>
-            {busy === 'deploy' ? '部署中…' : task?.status === 'succeeded' ? '重新部署（修复）' : '开始部署'}
+          <button className="primary" onClick={openDeploy} disabled={Boolean(busy) || running}>
+            {busy === 'plan' ? '正在生成安装方案…' : task?.status === 'succeeded' ? '重新部署（修复）' : '开始部署'}
           </button>
           <button onClick={pause} disabled={Boolean(busy) || !running}>
             {busy === 'pause' ? '暂停中…' : '暂停'}
@@ -837,6 +1125,11 @@ export function App(): JSX.Element {
           <div style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
         <p className="muted">{stage ? `当前阶段：${stage}` : task?.status === 'succeeded' ? '全部步骤已完成' : '尚未开始'}</p>
+        {decision?.blocked && (
+          <p className="muted">
+            当前环境存在阻塞项，部署按钮不会执行任何操作。处理后点「重新检测」。
+          </p>
+        )}
 
         {failure && (
           <div className="failure">
@@ -1412,6 +1705,104 @@ export function App(): JSX.Element {
           </div>
         )}
       </section>
+
+      {modal === 'deploy' && deployPlan && (
+        <div className="modal-backdrop">
+          <div className="modal wide">
+            <h2>{deployPlan.needsChoice ? '请选择使用哪一套运行环境' : '确认本次部署'}</h2>
+            {deployPlan.needsChoice ? (
+              <>
+                <p>
+                  检测到多种可行方案。请明确选择一项；在你选择之前，本软件不会执行任何安装或修改。
+                </p>
+                <div className="modal-body">
+                  {deployPlan.options.map((option) => (
+                    <div className="option" key={option.id}>
+                      <div>
+                        <b>{option.label}</b>
+                        <p className="muted">{option.description}</p>
+                      </div>
+                      <button
+                        className="primary"
+                        onClick={() => choosePlan(option)}
+                        disabled={Boolean(busy)}
+                      >
+                        {busy === 'choose' ? '处理中…' : '使用此方案'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="row">
+                  <button onClick={cancelDeployPlan} disabled={Boolean(busy)}>
+                    取消（不执行任何操作）
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>请确认以下内容。点「确认并开始部署」之前，不会下载或修改任何文件。</p>
+                <div className="modal-body">
+                  <p>
+                    <b>本次会安装：</b>
+                    {deployPlan.install.length ? deployPlan.install.join('、') : '无'}
+                  </p>
+                  <p>
+                    <b>本次会复用：</b>
+                    {deployPlan.reuse.length ? deployPlan.reuse.join('、') : '无'}
+                  </p>
+                  <p>
+                    <b>本次会修改：</b>
+                    {deployPlan.modify.length ? deployPlan.modify.join('、') : '无（只新增本软件自己的目录）'}
+                  </p>
+                  <p>
+                    <b>本次不会修改：</b>
+                  </p>
+                  <ul>
+                    {deployPlan.untouched.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                  <p>
+                    <b>安装位置：</b>
+                    <code>{boot?.dataDir ?? '本软件数据目录'}</code>
+                  </p>
+                  <p>
+                    <b>预计占用：</b>约 150–350 MB（下载约 50–150 MB；首次下载还取决于网络，通常几分钟）。
+                  </p>
+                  <p>
+                    <b>管理员权限：</b>不需要（{deployPlan.requiresAdmin ? '本方案需要管理员，请勿继续' : '全程按当前用户安装'}）
+                  </p>
+                  <p>
+                    <b>联网：</b>
+                    {deployPlan.requiresNetwork
+                      ? '需要（下载运行时与依赖）'
+                      : '运行环境已复用；QQ 插件若尚未安装，最后一步仍会联网安装'}
+                  </p>
+                  {deployPlan.runtime && (
+                    <p className="muted">
+                      实际使用：Node {deployPlan.runtime.node.mode === 'system' ? '复用系统已有' : '本软件私有'}{' '}
+                      {deployPlan.runtime.node.version ?? ''}；Harness{' '}
+                      {deployPlan.runtime.harness.mode === 'system' ? '复用系统已有' : '本软件私有'}
+                    </p>
+                  )}
+                  <p>
+                    <b>失败后如何恢复：</b>
+                    {deployPlan.recovery}
+                  </p>
+                </div>
+                <div className="row">
+                  <button className="primary" onClick={deploy} disabled={Boolean(busy) || deployPlan.requiresAdmin}>
+                    {busy === 'deploy' ? '部署中…' : '确认并开始部署'}
+                  </button>
+                  <button onClick={cancelDeployPlan} disabled={Boolean(busy)}>
+                    取消（不执行任何操作）
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {modal === 'cancel' && (
         <div className="modal-backdrop">

@@ -84,10 +84,19 @@ describe('IPC 契约：主进程 / preload / 渲染层一致', () => {
 });
 
 describe('IPC 参数校验', () => {
-  it('task:start 只接受 full-deploy 场景并补全默认值', () => {
-    expect(TaskStartSchema.parse({ scenario: 'full-deploy' })).toEqual({ scenario: 'full-deploy', fresh: false });
+  it('task:start 只接受 full-deploy 场景，且必须携带已确认的 planId', () => {
+    expect(
+      TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678', confirmed: true }),
+    ).toEqual({ scenario: 'full-deploy', fresh: false, planId: 'plan-12345678', confirmed: true });
     expect(() => TaskStartSchema.parse({ scenario: 'other' })).toThrow();
-    expect(() => TaskStartSchema.parse({ scenario: 'full-deploy', extra: 1 })).toThrow();
+    expect(() => TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678', confirmed: true, extra: 1 })).toThrow();
+    // 没有决策 planId / 没有显式确认，一律拒绝：UI 不得绕过门禁。
+    expect(() => TaskStartSchema.parse({ scenario: 'full-deploy' })).toThrow();
+    expect(() => TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'plan-12345678' })).toThrow();
+    expect(() => TaskStartSchema.parse({ scenario: 'full-deploy', confirmed: true })).toThrow();
+    expect(() =>
+      TaskStartSchema.parse({ scenario: 'full-deploy', planId: 'short', confirmed: true }),
+    ).toThrow();
   });
 
   it('taskId 不能为空，且拒绝多余字段', () => {

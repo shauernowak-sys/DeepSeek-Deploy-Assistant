@@ -29,7 +29,11 @@ async function fixture(): Promise<{ service: DeployService; root: string }> {
     manifestsDir: manifests,
     registry: 'https://registry.npmmirror.com',
   } as Container;
-  return { service: new DeployService({ container, onEvent: () => undefined }), root: paths.root };
+  return { service: new DeployService({ container, onEvent: () => undefined, authorize: notUsed }), root: paths.root };
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('authorize should not be called in this test');
 }
 
 async function seed(service: DeployService, data: JournalData): Promise<void> {

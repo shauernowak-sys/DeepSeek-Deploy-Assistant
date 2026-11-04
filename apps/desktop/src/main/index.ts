@@ -202,11 +202,16 @@ if (!gotLock) {
     });
 
     const broadcast = attachEventForwarding(win);
-    const deploy = new DeployService({ container, onEvent: broadcast });
+    // 门禁先于执行器创建：DeployService 的 start 必须经过 EnvService.authorize。
+    const env = new EnvService(container);
+    const deploy = new DeployService({
+      container,
+      onEvent: broadcast,
+      authorize: (planId, confirmed) => env.authorize(planId, confirmed),
+    });
     deployService = deploy;
     // A journal stuck at `running` from a killed process must not survive into this session.
     await deploy.reconcileInterrupted();
-    const env = new EnvService(container);
     const secrets = new Secrets(container.paths.root);
     const api = new ApiService(container, secrets);
     let qq: QqService | undefined;

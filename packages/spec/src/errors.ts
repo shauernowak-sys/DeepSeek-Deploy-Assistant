@@ -12,6 +12,10 @@ export const ERROR_CODES = {
   E_HARNESS_NOT_DEPLOYED: 'E_HARNESS_NOT_DEPLOYED',
   E_DISK_FULL: 'E_DISK_FULL',
   E_ROLLBACK_FAILED: 'E_ROLLBACK_FAILED',
+  E_DECISION_REQUIRED: 'E_DECISION_REQUIRED',
+  E_DECISION_STALE: 'E_DECISION_STALE',
+  E_DECISION_BLOCKED: 'E_DECISION_BLOCKED',
+  E_DECISION_UNCONFIRMED: 'E_DECISION_UNCONFIRMED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -47,4 +51,8 @@ export const DIAGNOSTICS: Record<ErrorCode, { cause: string; action: string }> =
   E_HARNESS_NOT_DEPLOYED: { cause: '本机还没有装好 Harness 运行时（Node / dsh）', action: '先完成"一键部署"（需联网），成功后再启动 Harness' },
   E_DISK_FULL: { cause: '磁盘空间不足', action: '至少预留 2 GB 后重试' },
   E_ROLLBACK_FAILED: { cause: '回滚时部分文件被占用', action: '关闭 Harness 后重试，或手动删除本次创建目录' },
+  E_DECISION_REQUIRED: { cause: '没有先执行环境检测与安装决策', action: '回到「环境检测」重新检测后再部署' },
+  E_DECISION_STALE: { cause: '安装决策已过期或来自旧的一次检测', action: '重新检测环境并再次确认' },
+  E_DECISION_BLOCKED: { cause: '当前环境不满足部署条件，或仍需用户选择', action: '按界面提示处理阻塞项后再试' },
+  E_DECISION_UNCONFIRMED: { cause: '用户尚未确认安装方案', action: '在确认页点「确认并开始部署」' },
 };

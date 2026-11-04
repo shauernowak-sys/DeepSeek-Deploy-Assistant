@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 
 import {
   DiagExportSchema,
-  EnvScanSchema,
+  EnvInspectSchema,
   HarnessLaunchSchema,
   ApiEmptySchema,
   ApiSaveSchema,
@@ -140,9 +140,14 @@ export function registerIpc(ctx: IpcContext): void {
     return { ok: true };
   });
 
-  ipcMain.handle('env:scan', async (_event, raw: unknown) => {
-    EnvScanSchema.parse(raw ?? {});
-    return ctx.env.scan();
+  ipcMain.handle('env:inspect', async (_event, raw: unknown) => {
+    const { preferences } = EnvInspectSchema.parse(raw ?? {});
+    return ctx.env.inspect(preferences);
+  });
+
+  ipcMain.handle('env:decide', async (_event, raw: unknown) => {
+    const { preferences } = EnvInspectSchema.parse(raw ?? {});
+    return ctx.env.decide(preferences);
   });
 
   // ---- 个人 QQ（SnowLuma 路线）----
@@ -259,12 +264,12 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('task:start', async (_event, raw: unknown) => {
     const payload = TaskStartSchema.parse(raw);
-    return ctx.deploy.start({ fresh: payload.fresh });
+    return ctx.deploy.start({ planId: payload.planId, confirmed: payload.confirmed, fresh: payload.fresh });
   });
 
   ipcMain.handle('task:resume', async (_event, raw: unknown) => {
-    TaskIdSchema.parse(raw);
-    return ctx.deploy.start();
+    const { taskId } = TaskIdSchema.parse(raw);
+    return ctx.deploy.resume(taskId);
   });
 
   ipcMain.handle('task:status', async (_event, raw: unknown) => {

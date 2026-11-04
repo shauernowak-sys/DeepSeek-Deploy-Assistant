@@ -1,4 +1,5 @@
 export * from './domain';
+export * from './environment';
 export * from './errors';
 export * from './manifest';
 export * from './ipc';

@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { BASELINE, DdaError, ERROR_CODES, type PluginState, type RuntimeInfo } from '@dda/spec';
 
@@ -10,17 +10,22 @@ export interface DshEnvOptions {
   paths: AppPaths;
   pnpmBinDir: string;
   registry: string;
+  /** 复用系统 Node 时传入；默认使用私有运行时。 */
+  nodeExePath?: string;
+  /** 复用系统 Harness 时传入其可执行 JS 入口；默认使用私有 Harness。 */
+  binPath?: string;
 }
 
 export function dshEnv(options: DshEnvOptions, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const { paths, pnpmBinDir, registry } = options;
+  const node = options.nodeExePath ?? nodeExe(paths);
   return {
     ...process.env,
     DSH_HOME: paths.dshHome,
     npm_config_registry: registry,
     npm_config_store_dir: join(paths.root, 'cache', 'pnpm-store'),
     // Only this child sees our private Node/pnpm; the user's PATH and env vars stay untouched.
-    PATH: `${paths.nodeDir};${pnpmBinDir};${process.env.PATH ?? ''}`,
+    PATH: `${dirname(node)};${pnpmBinDir};${process.env.PATH ?? ''}`,
     ...extra,
   };
 }
@@ -43,8 +48,8 @@ export interface DshCli {
 
 export function createDshCli(options: DshEnvOptions): DshCli {
   const { paths } = options;
-  const exe = nodeExe(paths);
-  const bin = dshBinJs(paths);
+  const exe = options.nodeExePath ?? nodeExe(paths);
+  const bin = options.binPath ?? dshBinJs(paths);
 
   const run = (args: string[], timeoutMs = 5 * 60_000) =>
     runCommand({ exePath: exe, args: [bin, ...args], env: dshEnv(options), timeoutMs });

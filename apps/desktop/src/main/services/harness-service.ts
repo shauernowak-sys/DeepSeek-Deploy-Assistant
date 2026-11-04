@@ -1,7 +1,14 @@
 import { join } from 'node:path';
 
 import { collectQrArt, describeEvent, parseQqLine, probeHarness, stripAnsi, type QqOutputEvent } from '@dda/core';
-import { createDshCli, dshBinJs, fileExists, nodeExe, type ChildHandle, type DshCli } from '@dda/adapters';
+import {
+  createDshCli,
+  dshBinJs,
+  fileExists,
+  loadRuntimeSelection,
+  type ChildHandle,
+  type DshCli,
+} from '@dda/adapters';
 import { BASELINE, DdaError, ERROR_CODES, type HealthReport, type PluginState } from '@dda/spec';
 
 import type { Container } from './container';
@@ -23,7 +30,6 @@ export class HarnessService {
     health: HealthReport;
     startedAt: string;
   };
-  private cli?: DshCli;
   /** 子进程输出环形缓冲：QQ 插件没有状态接口，连接/扫码信号只在 stdout/stderr 里。 */
   private readonly output: string[] = [];
   private readonly qqEvents: { at: string; event: QqOutputEvent }[] = [];
@@ -41,9 +47,11 @@ export class HarnessService {
    */
   private async assertRuntimeInstalled(): Promise<void> {
     const { paths } = this.container;
+    const runtime = await loadRuntimeSelection(paths);
     const missing: string[] = [];
-    if (!(await fileExists(nodeExe(paths)))) missing.push(`Node（${nodeExe(paths)}）`);
-    if (!(await fileExists(dshBinJs(paths)))) missing.push(`Harness 本体（${dshBinJs(paths)}）`);
+    if (!(await fileExists(runtime.node.exe))) missing.push(`Node（${runtime.node.exe}）`);
+    const harnessBin = runtime.harness.bin ?? dshBinJs(paths);
+    if (!(await fileExists(harnessBin))) missing.push(`Harness 本体（${harnessBin}）`);
     if (missing.length === 0) return;
     throw new DdaError(
       ERROR_CODES.E_HARNESS_NOT_DEPLOYED,
@@ -52,15 +60,15 @@ export class HarnessService {
     );
   }
 
-  private getCli(): DshCli {
-    if (!this.cli) {
-      this.cli = createDshCli({
-        paths: this.container.paths,
-        pnpmBinDir: join(this.container.paths.root, 'bin'),
-        registry: this.container.registry,
-      });
-    }
-    return this.cli;
+  private async getCli(): Promise<DshCli> {
+    const runtime = await loadRuntimeSelection(this.container.paths);
+    return createDshCli({
+      paths: this.container.paths,
+      pnpmBinDir: join(this.container.paths.root, 'bin'),
+      registry: this.container.registry,
+      nodeExePath: runtime.node.exe,
+      binPath: runtime.harness.bin,
+    });
   }
 
   async status(): Promise<HarnessStatus> {
@@ -75,7 +83,7 @@ export class HarnessService {
     await this.assertRuntimeInstalled();
     this.resetOutput();
 
-    const { handle, ready } = await this.getCli().launchWeb(
+    const { handle, ready } = await (await this.getCli()).launchWeb(
       BASELINE.dsh.profile,
       port,
       undefined,
@@ -192,21 +200,21 @@ export class HarnessService {
     return health;
   }
 
-  listPlugins(): Promise<PluginState[]> {
-    return this.getCli().listPlugins(BASELINE.dsh.profile);
+  async listPlugins(): Promise<PluginState[]> {
+    return (await this.getCli()).listPlugins(BASELINE.dsh.profile);
   }
 
-  installQqPlugin(): Promise<void> {
-    return this.getCli().addPlugin(BASELINE.dsh.profile, `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`);
+  async installQqPlugin(): Promise<void> {
+    return (await this.getCli()).addPlugin(BASELINE.dsh.profile, `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`);
   }
 
   /** 给其它模块（个人 QQ 适配插件）用：只走官方 `plugin add/remove`，不改 profile 文件。 */
-  installPlugin(spec: string): Promise<void> {
-    return this.getCli().addPlugin(BASELINE.dsh.profile, spec);
+  async installPlugin(spec: string): Promise<void> {
+    return (await this.getCli()).addPlugin(BASELINE.dsh.profile, spec);
   }
 
-  removePlugin(name: string): Promise<void> {
-    return this.getCli().removePlugin(BASELINE.dsh.profile, name);
+  async removePlugin(name: string): Promise<void> {
+    return (await this.getCli()).removePlugin(BASELINE.dsh.profile, name);
   }
 
   /**

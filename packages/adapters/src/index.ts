@@ -4,3 +4,5 @@ export * from './runtime/node';
 export * from './pkgmgr/pnpm';
 export * from './harness/cli';
 export * from './harness/desktop';
+export * from './detect/system';
+export * from './runtime/selection';

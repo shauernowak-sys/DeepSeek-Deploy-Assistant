@@ -6,8 +6,12 @@ import { contextBridge, ipcRenderer } from 'electron';
  */
 const api = {
   bootstrap: () => ipcRenderer.invoke('app:bootstrap'),
-  scanEnv: () => ipcRenderer.invoke('env:scan', {}),
-  startDeploy: (fresh = false) => ipcRenderer.invoke('task:start', { scenario: 'full-deploy', fresh }),
+  inspectEnv: (preferences?: unknown) =>
+    ipcRenderer.invoke('env:inspect', preferences ? { preferences } : {}),
+  decideEnv: (preferences?: unknown) =>
+    ipcRenderer.invoke('env:decide', preferences ? { preferences } : {}),
+  startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean }) =>
+    ipcRenderer.invoke('task:start', { scenario: 'full-deploy', ...input }),
   resumeDeploy: (taskId: string) => ipcRenderer.invoke('task:resume', { taskId }),
   taskStatus: (taskId: string) => ipcRenderer.invoke('task:status', { taskId }),
   pauseDeploy: (taskId: string) => ipcRenderer.invoke('task:pause', { taskId }),

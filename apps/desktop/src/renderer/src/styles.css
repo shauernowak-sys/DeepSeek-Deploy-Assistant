@@ -422,3 +422,61 @@ code.hash {
     width: 100%;
   }
 }
+
+/* ---- 环境检测与安装决策 ---- */
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+.details {
+  margin-top: 10px;
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.decision-list {
+  margin-top: 12px;
+}
+
+.decision-list h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.decision-list p {
+  margin: 6px 0;
+  line-height: 1.55;
+}
+
+table td.path {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.modal.wide {
+  max-width: 760px;
+  width: 92vw;
+}
+
+.option {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--panel-2);
+}
+
+.option p {
+  margin: 4px 0 0;
+  word-break: break-all;
+}

@@ -49,12 +49,30 @@ const evaluate = async (expression) => {
 };
 
 const clicked = await evaluate(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('开始部署'));
+  const section = [...document.querySelectorAll('section.card')].find((s) => s.textContent.includes('3. 部署'));
+  const btn = section?.querySelector('.row button.primary');
   if (!btn) return 'button-not-found';
   btn.click();
   return 'clicked';
 })()`);
 console.log(`click=${clicked}`);
+
+// 门禁：点击「开始部署」只会打开确认页 / 方案选择，必须再确认一次才会创建任务记录。
+await new Promise((r) => setTimeout(r, 1500));
+for (let i = 0; i < 5; i += 1) {
+  const step = await evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('.modal button')];
+    const choose = buttons.find((b) => b.textContent.includes('使用此方案'));
+    if (choose) { choose.click(); return 'chose'; }
+    const confirm = buttons.find((b) => b.textContent.includes('确认并开始部署'));
+    if (confirm) { confirm.click(); return 'confirmed'; }
+    return 'waiting';
+  })()`);
+  console.log(`gate=${step}`);
+  if (step === 'confirmed') break;
+  if (step === 'waiting' && i > 2) throw new Error('确认页没有出现');
+  await new Promise((r) => setTimeout(r, 1200));
+}
 
 const started = Date.now();
 let last = '';

@@ -68,7 +68,15 @@ export async function executePlan(options: ExecuteOptions): Promise<ExecuteResul
   const existing = options.resume ? await Journal.load(journal.filePath) : undefined;
   const data: JournalData =
     existing && existing.taskId === taskId
-      ? existing
+      ? {
+          ...existing,
+          // 计划可能因「复用系统运行时 / 私有运行时」而增减步骤；按 step.id 对齐，
+          // 既不丢已完成进度，也不会因索引错位把进度记到别的步骤上。
+          steps: steps.map<StepState>((s) => {
+            const previous = existing.steps.find((p) => p.id === s.id);
+            return previous ? { ...previous, title: s.title } : { id: s.id, title: s.title, status: 'pending', attempts: 0 };
+          }),
+        }
       : {
           taskId,
           scenario,

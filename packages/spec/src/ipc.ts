@@ -4,11 +4,34 @@ export const EmptySchema = z.object({}).strict();
 
 export const EnvScanSchema = z.object({}).strict();
 
-export const TaskStartSchema = z.object({
-  scenario: z.literal('full-deploy'),
-  /** Re-verify an already successful deployment by starting from a fresh journal. */
-  fresh: z.boolean().default(false),
-}).strict();
+/** 决策偏好来自用户在选择页的显式选择；主进程会再次校验。 */
+export const DecisionPreferencesSchema = z
+  .object({
+    node: z.enum(['auto', 'system', 'private']).optional(),
+    harness: z.enum(['auto', 'system', 'private']).optional(),
+    nodePath: z.string().min(1).max(1000).optional(),
+    harnessPath: z.string().min(1).max(1000).optional(),
+    routeAcknowledged: z.boolean().optional(),
+  })
+  .strict();
+
+export const EnvInspectSchema = z
+  .object({ preferences: DecisionPreferencesSchema.optional() })
+  .strict();
+
+/**
+ * 部署必须先拿到一次「环境检测 + 安装决策」的 planId，并由用户显式确认。
+ * 缺任何一个都拒绝：UI 不得绕过决策门禁直接调用部署执行器。
+ */
+export const TaskStartSchema = z
+  .object({
+    scenario: z.literal('full-deploy'),
+    /** Re-verify an already successful deployment by starting from a fresh journal. */
+    fresh: z.boolean().default(false),
+    planId: z.string().min(8).max(128),
+    confirmed: z.boolean(),
+  })
+  .strict();
 
 export const TaskIdSchema = z.object({ taskId: z.string().min(1) }).strict();
 

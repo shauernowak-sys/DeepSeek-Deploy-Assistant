@@ -28,6 +28,8 @@ export interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
+  /** true when the process was killed by our timeout rather than exiting on its own. */
+  timedOut?: boolean;
 }
 
 export function assertExecutableAllowed(exePath: string): AllowedExecutable {
@@ -89,6 +91,39 @@ export async function runCommand(options: RunOptions): Promise<RunResult> {
 export interface CaptureOptions extends RunOptions {
   /** Exit code 0 is still required unless stderr matches this (e.g. pnpm's ERR_PNPM_IGNORED_BUILDS). */
   tolerateStderr?: RegExp;
+}
+
+/** Never throws for a non-zero exit: callers that need to distinguish "not found" from "failed" use this. */
+export async function tryRunCommand(options: RunOptions): Promise<RunResult> {
+  const child = spawnChecked(options);
+  let stdout = '';
+  let stderr = '';
+  let timedOut = false;
+  const timer =
+    options.timeoutMs !== undefined
+      ? setTimeout(() => {
+          timedOut = true;
+          child.kill();
+        }, options.timeoutMs)
+      : undefined;
+
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    stdout += chunk;
+    options.onStdout?.(chunk);
+  });
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+    options.onStderr?.(chunk);
+  });
+
+  const code = await new Promise<number>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (exitCode) => resolve(exitCode ?? -1));
+  });
+  if (timer) clearTimeout(timer);
+  return { code, stdout, stderr, timedOut };
 }
 
 /** Like runCommand but can tolerate known-benign non-zero exits; returns the code for logging. */

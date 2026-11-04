@@ -33,7 +33,13 @@ async function fixture(): Promise<{
     registry: 'https://registry.npmmirror.com',
   } as Container;
   return {
-    service: new DeployService({ container, onEvent: () => undefined }),
+    service: new DeployService({
+      container,
+      onEvent: () => undefined,
+      authorize: async () => {
+        throw new Error('authorize should not be called in this test');
+      },
+    }),
     root: paths.root,
     localAppData,
   };

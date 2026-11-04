@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { BASELINE } from '@dda/spec';
 
@@ -37,6 +37,11 @@ export function nodeExe(paths: AppPaths): string {
 
 export function npmCliJs(paths: AppPaths): string {
   return join(paths.nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+}
+
+/** npm 随 Node 一起安装；复用系统 Node 时从同一个目录解析 npm 入口。 */
+export function npmCliFor(nodeExePath: string): string {
+  return join(dirname(nodeExePath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
 }
 
 export function pnpmCliJs(paths: AppPaths): string {

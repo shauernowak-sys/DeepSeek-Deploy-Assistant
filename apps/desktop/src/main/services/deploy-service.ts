@@ -2,7 +2,17 @@ import { existsSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createTaskControl, executePlan, Journal, rollbackPlan, classifyRollbackTargets } from '@dda/core';
-import type { RollbackPreview, RollbackResult, TaskEvent, TaskSummary } from '@dda/spec';
+import { loadRuntimeSelection, saveRuntimeSelection } from '@dda/adapters';
+import {
+  DdaError,
+  ERROR_CODES,
+  type DeploymentDecisionAuthorization,
+  type RollbackPreview,
+  type RollbackResult,
+  type RuntimeSelection,
+  type TaskEvent,
+  type TaskSummary,
+} from '@dda/spec';
 import { BASELINE } from '@dda/spec';
 
 import type { Container } from './container';
@@ -14,6 +24,17 @@ const SCENARIO = 'full-deploy';
 export interface DeployServiceDeps {
   container: Container;
   onEvent: (event: TaskEvent) => void;
+  /**
+   * 决策门禁。必须由 EnvService.authorize 提供；UI 不可能绕过它直接调用执行器。
+   * 测试可注入固定实现，但生产装配只允许真实门禁。
+   */
+  authorize: (planId: string, confirmed: boolean) => Promise<DeploymentDecisionAuthorization>;
+}
+
+export interface StartDeployOptions {
+  planId: string;
+  confirmed: boolean;
+  fresh?: boolean;
 }
 
 export interface CancelResult {
@@ -83,17 +104,57 @@ export class DeployService {
   }
 
   /**
-   * Starts (or resumes) the plan in the background; progress arrives through `onEvent`.
+   * Starts the plan only after the decision gate approves `planId` and the user confirmed.
    * `fresh` retires the current journal first so an already successful deployment is
    * re-verified step by step instead of being skipped as "nothing to do".
    */
-  start(options: { fresh?: boolean } = {}): Promise<{ taskId: string }> {
+  start(options: StartDeployOptions): Promise<{ taskId: string }> {
+    return this.serializeAfterAuthorization(options);
+  }
+
+  private async serializeAfterAuthorization(options: StartDeployOptions): Promise<{ taskId: string }> {
+    // Authorization happens before taking the lifecycle lock: it is read-only and can fail fast.
+    const authorization = await this.deps.authorize(options.planId, options.confirmed);
     return this.serialize(async () => {
       if (!this.running) {
         if (options.fresh) this.retireJournal();
+        // 先落盘本次确认的运行时，Harness 启动/重启后才能继续使用同一套 Node 与 CLI。
+        await saveRuntimeSelection(this.deps.container.paths, authorization.runtime, authorization.decision.planId);
         this.controlHandle = createTaskControl();
         const handle = this.controlHandle;
-        this.running = this.execute(handle.control)
+        this.running = this.execute(handle.control, authorization.runtime)
+          .catch((error: unknown) => this.failUnexpected(error))
+          .finally(() => {
+            this.running = undefined;
+            this.controlHandle = undefined;
+          });
+      }
+      return { taskId: this.taskId };
+    });
+  }
+
+  /**
+   * 继续一个「已经过门禁」的任务：必须存在任务记录，不能凭空启动一次部署。
+   * 这保住了暂停/失败后的可恢复性，同时不打开绕过决策门禁的第二条路。
+   */
+  resume(taskId: string): Promise<{ taskId: string }> {
+    return this.serialize(async () => {
+      if (taskId !== this.taskId) {
+        throw new DdaError(ERROR_CODES.E_DECISION_REQUIRED, '任务 ID 不匹配，已拒绝继续', '请重新检测环境后再部署');
+      }
+      const data = await Journal.load(this.journalPath());
+      if (!data) {
+        throw new DdaError(
+          ERROR_CODES.E_DECISION_REQUIRED,
+          '没有可继续的任务记录，已拒绝执行部署',
+          '请先完成「环境检测」并按推荐方案确认',
+        );
+      }
+      if (!this.running) {
+        const runtime = await loadRuntimeSelection(this.deps.container.paths);
+        this.controlHandle = createTaskControl();
+        const handle = this.controlHandle;
+        this.running = this.execute(handle.control, runtime)
           .catch((error: unknown) => this.failUnexpected(error))
           .finally(() => {
             this.running = undefined;
@@ -266,7 +327,7 @@ export class DeployService {
     };
   }
 
-  private plan() {
+  private plan(runtime?: RuntimeSelection) {
     const { container } = this.deps;
     return buildDeploySteps({
       paths: container.paths,
@@ -274,16 +335,20 @@ export class DeployService {
       matrix: container.matrix,
       registry: container.registry,
       log: (m) => void container.logger.info('deploy', m),
+      runtime,
     });
   }
 
-  private async execute(control: ReturnType<typeof createTaskControl>['control']): Promise<TaskSummary> {
+  private async execute(
+    control: ReturnType<typeof createTaskControl>['control'],
+    runtime: RuntimeSelection,
+  ): Promise<TaskSummary> {
     const { container } = this.deps;
     const journal = new Journal(this.journalPath());
     const result = await executePlan({
       taskId: this.taskId,
       scenario: SCENARIO,
-      steps: this.plan(),
+      steps: this.plan(runtime),
       journal,
       resume: true,
       control,
