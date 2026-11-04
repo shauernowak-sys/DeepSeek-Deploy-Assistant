@@ -1,7 +1,8 @@
-import { readFile, rename, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 import type { StepState, TaskSummary } from '@dda/spec';
+
+import { writeFileAtomic } from '../transfer/fs-utils';
 
 export interface JournalData {
   taskId: string;
@@ -30,26 +31,12 @@ export class Journal {
   }
 
   /**
-   * Atomic write: temp file + rename, so a crash never leaves a half-written journal.
-   * Windows can transiently reject the rename while another process (antivirus, a reader,
-   * the diagnostic exporter) holds the target open, so retry briefly before giving up.
+   * Atomic write through the shared `writeFileAtomic`: unique temp name, fsync before rename and
+   * per-path serialisation. A private copy of that logic previously gave the journal a fixed
+   * `<file>.tmp`, so two saves could publish each other's content.
    */
   async save(data: JournalData): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tmp = `${this.filePath}.tmp`;
-    await writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-
-    const retryable = new Set(['EPERM', 'EACCES', 'EBUSY', 'EEXIST']);
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        await rename(tmp, this.filePath);
-        return;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code ?? '';
-        if (!retryable.has(code) || attempt >= 6) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
-      }
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify(data, null, 2));
   }
 
   toSummary(data: JournalData): TaskSummary {
