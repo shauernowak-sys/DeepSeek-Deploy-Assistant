@@ -321,7 +321,7 @@ export class HarnessService {
       );
       await this.container.logger.info(
         'plugin',
-        `installed ${spec} from ${outcome.registry.id}; action=${outcome.action} connectivity=${outcome.connectivity}`,
+        `installed ${spec} from ${outcome.registry?.id ?? outcome.installSource}; action=${outcome.action} connectivity=${outcome.connectivity}`,
       );
       return;
     }

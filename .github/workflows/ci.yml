@@ -44,6 +44,10 @@ jobs:
       - name: License gate
         run: pnpm run license:check
 
+      # D05 / SEC-LIC: the shipped third-party notices must match the real dependency closure.
+      - name: Third-party notices check
+        run: pnpm run notices:check
+
       # D01: the built-in plugin index must pass the official format-1 validator and our own
       # assertions (registry publishTimestamp / integrity included), and must not be stale.
       - name: Build market index

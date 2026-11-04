@@ -190,7 +190,7 @@ describe('D03 验收③：registry 不可达时回退到第二源', () => {
     );
 
     expect(seen).toEqual(['l2-npmmirror', 'l3-official']);
-    expect(outcome.registry.id).toBe('l3-official');
+    expect(outcome.registry?.id).toBe('l3-official');
   });
 });
 
@@ -330,6 +330,33 @@ describe('D07/D08 版本切换与备份（同版本 / 降级 / 升级）', () =>
     expect(backup).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
     expect(installCalls).toBe(2);
+  });
+});
+
+describe('D05 离线安装（D03 本地模式）', () => {
+  it('提供 localSpec 时跳过 registry，直接装本地 tgz', async () => {
+    const addPlugin = vi.fn(async () => '');
+    const installLocal = vi.fn(async () => '');
+    const outcome = await installCatalogPlugin(
+      { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), localSpec: 'C:/cache/plugin-0.5.5.tgz' },
+      deps({ addPlugin, installLocal }),
+    );
+
+    expect(outcome.installSource).toBe('local-file');
+    expect(outcome.spec).toBe('C:/cache/plugin-0.5.5.tgz');
+    expect(outcome.registry).toBeUndefined();
+    expect(addPlugin).not.toHaveBeenCalled();
+    expect(installLocal).toHaveBeenCalledTimes(1);
+    expect(outcome.steps.find((step) => step.id === 'registry')?.status).toBe('skipped');
+  });
+
+  it('离线模式缺少 installLocal → 第 5 步失败', async () => {
+    await expect(
+      installCatalogPlugin(
+        { ...request(VERIFIED_MATRIX, '0.2.0-rc.2'), localSpec: 'C:/cache/plugin-0.5.5.tgz' },
+        deps(),
+      ),
+    ).rejects.toThrowError(/第 5 步（install）失败/);
   });
 });
 

@@ -42,7 +42,9 @@ export type ConnectivityVerdict = 'verified' | 'unverified';
 
 export interface PluginInstallOutcome {
   spec: string;
-  registry: RegistryLayer;
+  /** `registry` = 在线安装；`local-file` = 离线缓存/本地 tgz。 */
+  installSource: 'registry' | 'local-file';
+  registry?: RegistryLayer;
   /** D07：本次实际执行的动作（同版本时为 `none`，不发起任何 pnpm 调用）。 */
   action: PluginChangeAction;
   /** 版本切换前生成的 profile 备份目录（D08）。 */
@@ -60,6 +62,8 @@ export interface PluginInstallDeps {
   precheck: () => Promise<void>;
   /** 第 5 步：带 registry 调用官方安装命令；返回其输出（用于 D06 记录 tarball host）。 */
   addPlugin: (layer: RegistryLayer) => Promise<string | void>;
+  /** D05 离线安装：从本地 tgz（绝对路径）安装，不走 registry。 */
+  installLocal?: () => Promise<string | void>;
   /** D07：版本切换（remove+add）时先卸载；同版本路径不会调用。 */
   removePlugin?: () => Promise<void>;
   /** D08：版本切换前备份 profile，返回备份目录。缺少它时拒绝做版本切换。 */
@@ -92,6 +96,11 @@ export interface PluginInstallRequest {
   allowDowngrade?: boolean;
   /** 安装目标名（用于校验 installedVersion 是否属于同一个包）。 */
   name?: string;
+  /**
+   * D05 离线安装：绝对路径的 `.tgz`。提供时跳过 registry 步骤，
+   * 由 `deps.installLocal()` 直接从本地文件安装（哈希已由调用方校验）。
+   */
+  localSpec?: string;
 }
 
 /**
@@ -229,6 +238,7 @@ export async function installCatalogPlugin(
     log(`已安装 ${entry.name}@${entry.version}，同版本不再重复安装`);
     return {
       spec: marketInstallTarget(entry.name, entry).spec,
+      installSource: 'registry',
       registry: plannedTiming[0]!,
       action: 'none',
       steps: [],
@@ -279,9 +289,13 @@ export async function installCatalogPlugin(
     log,
   );
 
+  const localSpec = request.localSpec === undefined ? undefined : request.localSpec;
+  const installSource: PluginInstallOutcome['installSource'] = localSpec === undefined ? 'registry' : 'local-file';
+
   await runStep(
     PLUGIN_INSTALL_STEPS[2]!,
     async () => {
+      if (localSpec !== undefined) return `离线 tgz：${localSpec}`;
       target = marketInstallTarget(entry.name, entry);
       return target.spec;
     },
@@ -290,18 +304,32 @@ export async function installCatalogPlugin(
     log,
   );
   const installTarget = target ?? marketInstallTarget(entry.name, entry);
+  const effectiveSpec = localSpec ?? installTarget.spec;
 
   const plan = deps.plan ?? registryPlan();
-  await runStep(
-    PLUGIN_INSTALL_STEPS[3]!,
-    async () => {
-      if (plan.length === 0) throw new Error('registry 计划为空');
-      return plan.map((layer) => layer.label).join(' → ');
-    },
-    attempts,
-    outcomes,
-    log,
-  );
+
+  if (localSpec !== undefined) {
+    // 离线模式：registry 步骤没有意义，明确记 skipped（不记 succeeded）。
+    outcomes.push({
+      index: 4,
+      id: 'registry',
+      status: 'skipped',
+      attempts: 0,
+      detail: '离线模式：使用本地 tgz，不使用 registry',
+    });
+    log('第 4 步（registry）：跳过（离线模式）');
+  } else {
+    await runStep(
+      PLUGIN_INSTALL_STEPS[3]!,
+      async () => {
+        if (plan.length === 0) throw new Error('registry 计划为空');
+        return plan.map((layer) => layer.label).join(' → ');
+      },
+      attempts,
+      outcomes,
+      log,
+    );
+  }
 
   await runStep(
     PLUGIN_INSTALL_STEPS[4]!,
@@ -313,6 +341,14 @@ export async function installCatalogPlugin(
         await deps.removePlugin!();
         replaced = true;
         log(`已卸载旧版本 ${change.installedVersion ?? '(未知)'}，准备安装 ${entry.version}`);
+      }
+      if (localSpec !== undefined) {
+        if (deps.installLocal === undefined) {
+          throw new Error('离线安装缺少 installLocal 能力');
+        }
+        const output = await deps.installLocal();
+        if (typeof output === 'string') installOutput += `${output}\n`;
+        return `离线 tgz：${localSpec}`;
       }
       const result = await installWithRegistryFallback({
         spec: installTarget.spec,
@@ -422,8 +458,9 @@ export async function installCatalogPlugin(
   );
 
   return {
-    spec: installTarget.spec,
-    registry: usedRegistry ?? plan[0]!,
+    spec: effectiveSpec,
+    installSource,
+    ...(usedRegistry === undefined ? {} : { registry: usedRegistry }),
     action: change.action,
     ...(backupDir === undefined ? {} : { backupDir }),
     steps: outcomes,

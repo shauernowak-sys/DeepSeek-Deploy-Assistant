@@ -13,6 +13,9 @@ files:
 extraResources:
   - from: apps/desktop/resources
     to: .
+  # D05 / SEC-LIC：第三方许可清单随安装包分发
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
 
 asar: true
 
