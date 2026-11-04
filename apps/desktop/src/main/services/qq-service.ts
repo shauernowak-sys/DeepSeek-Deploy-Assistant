@@ -18,6 +18,7 @@ import {
   BASELINE,
   DEFAULT_QQ_SETTINGS,
   QQ_BINDING_TIMEOUT_MS,
+  QQ_PLUGIN_DISTRIBUTION,
   type QqCredentialMode,
   type QqSaveResult,
   type QqSettings,
@@ -385,7 +386,7 @@ export class QqService {
       return {
         ok: false,
         message: `安装失败：${message}`,
-        problems: [message, '若提示网络错误，请检查网络或代理；该插件只能在线安装（其依赖 qqbot-connector 为 UNLICENSED，不能打包分发）'],
+        problems: [message, `若提示网络错误，请检查网络或代理。${QQ_PLUGIN_DISTRIBUTION.notice}`],
       };
     }
   }

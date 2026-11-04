@@ -3,6 +3,7 @@ import { join, parse } from 'node:path';
 
 import {
   assertCombination,
+  assertDistributionAllowed,
   downloadVerified,
   detectAdmin,
   freeBytes,
@@ -26,7 +27,7 @@ import {
   type AppPaths,
   type DshCli,
 } from '@dda/adapters';
-import { BASELINE, DdaError, ERROR_CODES, type RuntimeSelection } from '@dda/spec';
+import { BASELINE, DdaError, ERROR_CODES, QQ_PLUGIN_DISTRIBUTION, type RuntimeSelection } from '@dda/spec';
 import type { CompatMatrix, RuntimeManifest } from '@dda/spec';
 
 export const QQ_PLUGIN_SPEC = `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`;
@@ -317,9 +318,9 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         );
       },
       async run(ctx: StepContext) {
-        ctx.log(
-          '注意: 该插件的运行时依赖 @tencent-connect/qqbot-connector 为 UNLICENSED，仅在线安装，不打包、不镜像。',
-        );
+        // Gate 4 ② 降级后：只允许在线安装；离线包/镜像/重打包在许可上不可行，先拦后装。
+        assertDistributionAllowed(QQ_PLUGIN_DISTRIBUTION, 'online-install');
+        ctx.log(QQ_PLUGIN_DISTRIBUTION.notice);
         await getCli().addPlugin(BASELINE.dsh.profile, QQ_PLUGIN_SPEC);
       },
     },

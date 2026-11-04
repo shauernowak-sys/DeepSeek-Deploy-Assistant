@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { QQ_PLUGIN_DISTRIBUTION } from '@dda/spec';
+
 import { PersonalQqPanel } from './components/PersonalQqPanel';
 
 interface StepState {
@@ -1495,7 +1497,7 @@ export function App(): JSX.Element {
           )}
 
           <p className="muted">
-            插件运行时依赖 qqbot-connector 为 UNLICENSED：仅在线安装，不打包、不镜像。真实 QQ 收发（QQ-GATE-01）尚未验收，
+            {QQ_PLUGIN_DISTRIBUTION.notice}真实 QQ 收发（QQ-GATE-01）尚未验收，
             未验证项一律不标记为通过。
           </p>
             </>

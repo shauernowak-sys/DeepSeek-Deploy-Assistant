@@ -16,6 +16,7 @@ export const ERROR_CODES = {
   E_DECISION_STALE: 'E_DECISION_STALE',
   E_DECISION_BLOCKED: 'E_DECISION_BLOCKED',
   E_DECISION_UNCONFIRMED: 'E_DECISION_UNCONFIRMED',
+  E_DISTRIBUTION_BLOCKED: 'E_DISTRIBUTION_BLOCKED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -55,4 +56,8 @@ export const DIAGNOSTICS: Record<ErrorCode, { cause: string; action: string }> =
   E_DECISION_STALE: { cause: '安装决策已过期或来自旧的一次检测', action: '重新检测环境并再次确认' },
   E_DECISION_BLOCKED: { cause: '当前环境不满足部署条件，或仍需用户选择', action: '按界面提示处理阻塞项后再试' },
   E_DECISION_UNCONFIRMED: { cause: '用户尚未确认安装方案', action: '在确认页点「确认并开始部署」' },
+  E_DISTRIBUTION_BLOCKED: {
+    cause: '该组件的依赖许可不允许我方分发（离线包/镜像/重打包）',
+    action: '改用在线安装；本软件只代为调用官方安装命令，不复制其字节',
+  },
 };
