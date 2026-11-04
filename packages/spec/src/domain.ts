@@ -100,6 +100,39 @@ export interface RollbackResult {
   refused: RollbackTarget[];
 }
 
+/** §21.10「回到上一可用」：一个 profile 备份的可展示摘要（D08 接线）。 */
+export interface ProfileBackupSummary {
+  /** 由备份目录名派生的稳定 id，渲染层回传它来选择备份。 */
+  id: string;
+  createdAt: string;
+  files: string[];
+  missing: string[];
+  isLatest: boolean;
+}
+
+/**
+ * 恢复前的只读预览。UI 必须先展示这些信息再让用户确认（R5：高风险动作需说明后果）。
+ */
+export interface ProfileRecoveryPreview {
+  available: boolean;
+  backups: ProfileBackupSummary[];
+  latestId?: string;
+  currentPlugins: Array<{ name: string; version?: string }>;
+  /** 文件还原后必须按备份的 lockfile 重建依赖；pnpm 缺失时只能告知用户手工执行。 */
+  rebuild: { willRun: boolean; command: string };
+  warnings: string[];
+  dataDir: string;
+}
+
+export interface ProfileRecoveryResult {
+  ok: boolean;
+  message: string;
+  restored: string[];
+  /** 恢复前自动打的保险备份：恢复本身失败/反悔时用它回到恢复前状态。 */
+  safetyBackup?: string;
+  plugins: Array<{ name: string; version?: string }>;
+}
+
 export interface HealthReport {
   level: HealthLevel;
   url: string;

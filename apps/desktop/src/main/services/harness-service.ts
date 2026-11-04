@@ -101,6 +101,14 @@ export class HarnessService {
     });
   }
 
+  /**
+   * §21.10：恢复 profile 前需要知道子进程是否还在跑（会占用 profile 文件）。
+   * 这里只看会话是否存在，**不做 HTTP 探测**，避免把慢探测塞进恢复前的预览路径。
+   */
+  get hasSession(): boolean {
+    return this.session !== undefined;
+  }
+
   async status(): Promise<HarnessStatus> {
     if (!this.session) return { running: false };
     const health = await probeHarness({ baseUrl: this.session.url.split('?')[0]!, token: this.session.token });

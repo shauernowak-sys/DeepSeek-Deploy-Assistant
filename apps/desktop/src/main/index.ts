@@ -1,7 +1,9 @@
 import { app, BrowserWindow, dialog, Menu, session } from 'electron';
 import { join } from 'node:path';
+import { access } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 
-import { appPaths } from '@dda/adapters';
+import { appPaths, pnpmCliJs } from '@dda/adapters';
 import type { Logger } from '@dda/core';
 
 import { createContainer } from './services/container';
@@ -14,6 +16,7 @@ import { ApiService } from './services/api-service';
 import { QqService } from './services/qq-service';
 import { PersonalQqService } from './services/personal-qq-service';
 import { SnowLumaDeploymentService } from './services/snowluma-deployment-service';
+import { ProfileRecoveryService } from './services/profile-recovery-service';
 import { attachEventForwarding, registerIpc } from './ipc/register';
 import { describeStartupError, recordStartupFailure } from './startup-guard';
 
@@ -235,6 +238,21 @@ if (!gotLock) {
       },
     });
     const diagnostics = new DiagnosticsService(container, env, harness, () => deploy.summary());
+    // §21.10「回到上一可用」：D08 的备份/恢复能力接到用户入口，恢复前先打保险备份。
+    const recovery = new ProfileRecoveryService({
+      container,
+      restore: (backupDir) => harness.restoreProfile(backupDir),
+      listPlugins: () => harness.listPlugins(),
+      isHarnessRunning: () => harness.hasSession,
+      hasPnpm: async () => {
+        try {
+          await access(pnpmCliJs(container.paths), fsConstants.X_OK);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    });
 
     // Registered here rather than at the very end, so a failure while loading the renderer still
     // stops the child processes we spawned instead of leaving them orphaned.
@@ -255,6 +273,7 @@ if (!gotLock) {
       qq,
       personal,
       deployment,
+      recovery,
       broadcast,
     });
 

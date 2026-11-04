@@ -56,6 +56,17 @@ export const TaskRollbackSchema = z
 
 export const DiagExportSchema = z.object({ confirmed: z.boolean() }).strict();
 
+/**
+ * §21.10「回到上一可用」：恢复 profile 备份会覆盖 profile 的声明文件并重建依赖，
+ * 因此和 rollback 一样必须显式 `confirmed: true`；`id` 省略表示"最近一份"。
+ */
+export const ProfileRestoreSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    confirmed: z.boolean(),
+  })
+  .strict();
+
 export const HarnessLaunchSchema = z.object({
   port: z.number().int().min(0).max(65535).default(0),
 }).strict();

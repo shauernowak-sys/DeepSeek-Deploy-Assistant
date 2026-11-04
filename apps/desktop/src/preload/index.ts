@@ -19,6 +19,9 @@ const api = {
   cancelDeploy: (taskId: string, cleanup: boolean) => ipcRenderer.invoke('task:cancel', { taskId, cleanup }),
   rollbackPreview: (taskId: string) => ipcRenderer.invoke('task:rollback-preview', { taskId }),
   rollback: (taskId: string, confirmed: boolean) => ipcRenderer.invoke('task:rollback', { taskId, confirmed }),
+  profileRecoveryPreview: () => ipcRenderer.invoke('profile:recovery-preview', {}),
+  profileRestore: (id: string | undefined, confirmed: boolean) =>
+    ipcRenderer.invoke('profile:restore', id === undefined ? { confirmed } : { id, confirmed }),
   launchHarness: (port = 0) => ipcRenderer.invoke('harness:launch', { port }),
   stopHarness: () => ipcRenderer.invoke('harness:stop'),
   harnessStatus: () => ipcRenderer.invoke('harness:status'),

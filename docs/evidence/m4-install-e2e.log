@@ -1,0 +1,65 @@
+[install-e2e] 基线：dsh 0.2.0-rc.2 / qqbot 0.5.5 / node 22.23.4
+[install-e2e] 说明：本脚本不关闭系统 VPN；"无 VPN"的可重复性来自剔除代理变量后直连所选源。
+
+[install-e2e] === 源：国内镜像 npmmirror（https://registry.npmmirror.com/）===
+[install-e2e] 隔离 DSH_HOME：C:\Users\LIU\AppData\Local\Temp\dda-install-e2e-mirror-xAG5Sc\DeepSeekDeployAssistant\dsh-home
+[install-e2e] 代理：可用：HTTP_PROXY=http://127.0.0.1:7990, HTTPS_PROXY=http://127.0.0.1:7990；本脚本剔除代理变量 → 实际子进程环境为直连
+[install-e2e] dsh 入口：C:\Users\LIU\AppData\Local\DeepSeekDeployAssistant\harness\0.2.0-rc.2\node_modules\@deepseek-ai\dsh\lib\bin.js
+[install-e2e] pnpm 目录：C:\Users\LIU\AppData\Local\DeepSeekDeployAssistant\bin
+[install-e2e] 0) 直连可达性探测（fetch，不经代理）
+[install-e2e]    国内镜像 npmmirror 直连 OK：元数据 HTTP 200，tarball 220.2 KiB in 0.20 s（1101 KiB/s），integrity=匹配
+[install-e2e]    pnpm store：D:\.pnpm-store\v11；安装前 9261 个文件 / 602.7 MiB
+[install-e2e] 1) 物化 profile（dsh plugin list）
+[install-e2e]    已安装：(空)
+[install-e2e] 2) 产品编排 installCatalogPlugin（9 步，单源 l2-npmmirror，不换源）
+[install-e2e] 第 1 步（compat）：通过 — 组合 C1-prime（verified-local）
+[install-e2e] 第 2 步（precheck）：通过
+[install-e2e] 第 3 步（spec）：通过 — @tencent-connect/dsh-qqbot@0.5.5
+[install-e2e] 第 4 步（registry）：通过 — 国内镜像 npmmirror
+[install-e2e] 从国内镜像 npmmirror安装 @tencent-connect/dsh-qqbot@0.5.5（1/1）
+[install-e2e] 已从国内镜像 npmmirror安装 @tencent-connect/dsh-qqbot@0.5.5（2227 ms）
+[install-e2e] 第 5 步（install）：通过 — 来自国内镜像 npmmirror；未取得 tarball host（pnpm 未输出下载地址）
+[install-e2e] 第 6 步（verify-install）：通过 — @tencent-connect/dsh-qqbot@0.5.5
+[install-e2e] 第 7 步（verify-load）：通过 — 已加载（enabled）
+[install-e2e] 第 8 步（config）：未验证（无证据源）
+[install-e2e] 第 9 步（connectivity）：未验证（无证据源）
+[install-e2e] 3) 结果（6.1 s）：action=install source=registry registry=国内镜像 npmmirror tarball=未取得 connectivity=unverified | 1:compat=succeeded 2:precheck=succeeded 3:spec=succeeded 4:registry=succeeded 5:install=succeeded 6:verify-install=succeeded 7:verify-load=succeeded 8:config=unverified 9:connectivity=unverified
+[install-e2e]    pnpm store 增量：0 个文件 / 0.0 MiB（本次为缓存命中，字节下载证据以上面第 0 步为准）
+[install-e2e] 4) 同版本再装一次，验证"同版本不重复装"（不应发起任何 pnpm 调用）
+[install-e2e] 已安装 @tencent-connect/dsh-qqbot@0.5.5，同版本不再重复安装
+[install-e2e]    action=none，steps=0（应为 none / 0）
+[install-e2e] === 国内镜像 npmmirror：PASS ===
+
+[install-e2e] === 源：官方源 npmjs（https://registry.npmjs.org/）===
+[install-e2e] 隔离 DSH_HOME：C:\Users\LIU\AppData\Local\Temp\dda-install-e2e-official-ehFMyz\DeepSeekDeployAssistant\dsh-home
+[install-e2e] 代理：可用：HTTP_PROXY=http://127.0.0.1:7990, HTTPS_PROXY=http://127.0.0.1:7990；本脚本剔除代理变量 → 实际子进程环境为直连
+[install-e2e] dsh 入口：C:\Users\LIU\AppData\Local\DeepSeekDeployAssistant\harness\0.2.0-rc.2\node_modules\@deepseek-ai\dsh\lib\bin.js
+[install-e2e] pnpm 目录：C:\Users\LIU\AppData\Local\DeepSeekDeployAssistant\bin
+[install-e2e] 0) 直连可达性探测（fetch，不经代理）
+[install-e2e]    官方源 npmjs 直连 OK：元数据 HTTP 200，tarball 220.2 KiB in 0.52 s（426 KiB/s），integrity=匹配
+[install-e2e]    pnpm store：D:\.pnpm-store\v11；安装前 9261 个文件 / 602.7 MiB
+[install-e2e] 1) 物化 profile（dsh plugin list）
+[install-e2e]    已安装：(空)
+[install-e2e] 2) 产品编排 installCatalogPlugin（9 步，单源 l3-official，不换源）
+[install-e2e] 第 1 步（compat）：通过 — 组合 C1-prime（verified-local）
+[install-e2e] 第 2 步（precheck）：通过
+[install-e2e] 第 3 步（spec）：通过 — @tencent-connect/dsh-qqbot@0.5.5
+[install-e2e] 第 4 步（registry）：通过 — 官方源 npmjs
+[install-e2e] 从官方源 npmjs安装 @tencent-connect/dsh-qqbot@0.5.5（1/1）
+[install-e2e] 已从官方源 npmjs安装 @tencent-connect/dsh-qqbot@0.5.5（2616 ms）
+[install-e2e] 第 5 步（install）：通过 — 来自官方源 npmjs；未取得 tarball host（pnpm 未输出下载地址）
+[install-e2e] 第 6 步（verify-install）：通过 — @tencent-connect/dsh-qqbot@0.5.5
+[install-e2e] 第 7 步（verify-load）：通过 — 已加载（enabled）
+[install-e2e] 第 8 步（config）：未验证（无证据源）
+[install-e2e] 第 9 步（connectivity）：未验证（无证据源）
+[install-e2e] 3) 结果（7.9 s）：action=install source=registry registry=官方源 npmjs tarball=未取得 connectivity=unverified | 1:compat=succeeded 2:precheck=succeeded 3:spec=succeeded 4:registry=succeeded 5:install=succeeded 6:verify-install=succeeded 7:verify-load=succeeded 8:config=unverified 9:connectivity=unverified
+[install-e2e]    pnpm store 增量：0 个文件 / 0.0 MiB（本次为缓存命中，字节下载证据以上面第 0 步为准）
+[install-e2e] 4) 同版本再装一次，验证"同版本不重复装"（不应发起任何 pnpm 调用）
+[install-e2e] 已安装 @tencent-connect/dsh-qqbot@0.5.5，同版本不再重复安装
+[install-e2e]    action=none，steps=0（应为 none / 0）
+[install-e2e] === 官方源 npmjs：PASS ===
+
+[install-e2e] === 汇总 ===
+[install-e2e] PASS  mirror  action=install registry=l2-npmmirror 用时 6.1s store+0；重复安装 action=none
+[install-e2e] PASS  official  action=install registry=l3-official 用时 7.9s store+0；重复安装 action=none
+[install-e2e] 全部来源通过

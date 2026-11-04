@@ -36,6 +36,7 @@
 | M4-D04 | [D04 本地导入实施报告](./M4-D04-实施报告.md) | zip / tgz / 目录 → 绝对路径 `.tgz`（目录与 zip 用 `pnpm pack --config.ignore-scripts=true`）；许可门禁先行（导入即分发，QQ 插件被拒）；`name/version`+`dsh.bundle.patch`+生命周期脚本校验；自带 ustar 读取与 zip-slip 防护；SHA-256 比对失败即删产物 | **已完成（2026-11-04）；557 测试通过；产物经 pnpm 实装验证** |
 | M4-D05 | [D05 离线与缓存实施报告](./M4-D05-实施报告.md) | 离线打包 API（先过 D11 门禁，含 UNLICENSED 直接拒）、内容寻址缓存（`cache/market/<sha256>`，命中重校验、损坏淘汰）、D03 本地安装模式、断网可执行提示；`THIRD_PARTY_NOTICES.md` 生成 + CI 校验 + 随包分发 | **已完成（2026-11-04）；578 测试通过；NOTICES 已进入 win-unpacked/resources** |
 | M4-收尾审计 | [M4 收尾审计报告](./M4-收尾审计报告.md) · [验收矩阵 §16](./audit/V0.1-完整功能验收矩阵.md) · [许可全文索引](../licenses/README.md) | 把 6 份实施报告逐任务对齐验收矩阵（15 行状态重判，`已完成` 112 / `部分完成` 59 / `未实现` 24，脚本复核）；补 `licenses/` 13 份许可全文 + 索引 + CI `licenses:check` + 随包分发；同步待开发功能清单口径 | **已完成（2026-11-04）；584 测试通过；typecheck/license/notices/licenses/validate:index/dist:dir 全绿** |
+| M4-恢复入口 | [恢复入口与安装 E2E 实施报告](./M4-恢复入口与安装E2E-实施报告.md) · [安装 E2E 证据](./evidence/m4-install-e2e.log) | §21.10「回到上一可用」接线（预览+确认+恢复前保险备份，`profile:recovery-preview` / `profile:restore`，部署页按钮与弹窗）；P-5 可重放安装 E2E（走 `installCatalogPlugin` 9 步 + 直连 fetch 字节探测 + pnpm store 增量） | **已完成（2026-11-05）；593 测试通过；e2e:install 两个源 PASS（镜像 1101 KiB/s、官方 426 KiB/s，integrity 匹配）** |
 
 ---
 

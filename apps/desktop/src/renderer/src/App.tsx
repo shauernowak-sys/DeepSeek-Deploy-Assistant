@@ -230,6 +230,33 @@ interface RollbackResultView {
   refused: RollbackTargetView[];
 }
 
+/** §21.10「回到上一可用」 */
+interface ProfileBackupView {
+  id: string;
+  createdAt: string;
+  files: string[];
+  missing: string[];
+  isLatest: boolean;
+}
+
+interface ProfileRecoveryPreviewView {
+  available: boolean;
+  backups: ProfileBackupView[];
+  latestId?: string;
+  currentPlugins: Array<{ name: string; version?: string }>;
+  rebuild: { willRun: boolean; command: string };
+  warnings: string[];
+  dataDir: string;
+}
+
+interface ProfileRecoveryResultView {
+  ok: boolean;
+  message: string;
+  restored: string[];
+  safetyBackup?: string;
+  plugins: Array<{ name: string; version?: string }>;
+}
+
 interface DiagPreview {
   entries: string[];
   totalBytes: number;
@@ -333,6 +360,8 @@ type Api = {
   ) => Promise<{ summary?: TaskSummary; cleaned: string[]; cleanupSkipped: boolean }>;
   rollbackPreview: (taskId: string) => Promise<RollbackPreviewView>;
   rollback: (taskId: string, confirmed: boolean) => Promise<RollbackResultView>;
+  profileRecoveryPreview: () => Promise<ProfileRecoveryPreviewView>;
+  profileRestore: (id: string | undefined, confirmed: boolean) => Promise<ProfileRecoveryResultView>;
   launchHarness: (port?: number) => Promise<{ running: boolean; url?: string; health?: HealthReport }>;
   stopHarness: () => Promise<{ ok: boolean }>;
   harnessStatus: () => Promise<{ running: boolean; url?: string; health?: HealthReport }>;
@@ -497,9 +526,11 @@ export function App(): JSX.Element {
   const [saveMessage, setSaveMessage] = useState<string>();
   const [confirmApiDelete, setConfirmApiDelete] = useState(false);
   const [stepOverrides, setStepOverrides] = useState<Record<string, string>>({});
-  const [modal, setModal] = useState<'cancel' | 'diag' | 'rollback' | 'deploy' | null>(null);
+  const [modal, setModal] = useState<'cancel' | 'diag' | 'rollback' | 'deploy' | 'recovery' | null>(null);
   const [cancelPreview, setCancelPreview] = useState<CancelPreview>();
   const [rollbackPreview, setRollbackPreview] = useState<RollbackPreviewView>();
+  const [recoveryPreview, setRecoveryPreview] = useState<ProfileRecoveryPreviewView>();
+  const [selectedBackup, setSelectedBackup] = useState<string>();
   const [cleanupOnCancel, setCleanupOnCancel] = useState(true);
   const [diagPreview, setDiagPreview] = useState<DiagPreview>();
   const [diagResult, setDiagResult] = useState<string>();
@@ -765,6 +796,25 @@ export function App(): JSX.Element {
       const inspection = await api.inspectEnv();
       setEnv(inspection.environment);
       setDecision(inspection.decision);
+      await refreshInfo();
+    });
+
+  /** §21.10 危险操作：先取只读预览（备份列表 + 影响面），弹窗确认后才真正恢复。 */
+  const openRecovery = () =>
+    run('recovery-preview', async () => {
+      const preview = await api.profileRecoveryPreview();
+      setRecoveryPreview(preview);
+      setSelectedBackup(preview.latestId);
+      setModal('recovery');
+    });
+
+  const confirmRecovery = () =>
+    run('recovery', async () => {
+      // 显式传 `confirmed=true`：主进程会再次校验，渲染层无法"只点一下就恢复"。
+      const result = await api.profileRestore(selectedBackup ?? recoveryPreview?.latestId, true);
+      setModal(null);
+      setNotice(result.message);
+      if (!result.ok) setError(result.message);
       await refreshInfo();
     });
 
@@ -1141,6 +1191,9 @@ export function App(): JSX.Element {
           </button>
           <button onClick={openRollback} disabled={Boolean(busy) || !task || running}>
             回滚本次创建…
+          </button>
+          <button onClick={openRecovery} disabled={Boolean(busy)} title="把 Harness profile 恢复到某个备份（恢复前会自动再备份一次）">
+            {busy === 'recovery-preview' ? '读取备份…' : '回到上一可用…'}
           </button>
           {task && (
             <span
@@ -1761,6 +1814,70 @@ export function App(): JSX.Element {
                 disabled={Boolean(busy) || (rollbackPreview?.deletableCount ?? 0) === 0}
               >
                 {busy === 'rollback' ? '回滚中…' : '确认回滚并删除'}
+              </button>
+              <button onClick={() => setModal(null)} disabled={Boolean(busy)}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal === 'recovery' && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h2>回到上一可用状态？</h2>
+            <p>
+              这会用备份里的 <b>4 个 profile 声明文件</b>覆盖当前 Harness profile，并按备份的 lockfile
+              重建依赖。<strong>恢复前会先自动备份当前状态</strong>，所以这次操作本身也能撤回。
+            </p>
+            <div className="modal-body">
+              {!recoveryPreview?.available ? (
+                <p className="muted">
+                  还没有可用的 profile 备份：完成一次插件安装（或版本切换）后才会留下备份，在此之前没有可回退的状态。
+                  你仍然可以用「回滚本次创建…」清理本次部署产物。
+                </p>
+              ) : (
+                <>
+                  <p className="muted">选择要恢复的备份（最近的排在最前）：</p>
+                  <div className="row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    {recoveryPreview.backups.map((backup) => (
+                      <label key={backup.id} className="muted">
+                        <input
+                          type="radio"
+                          name="profile-backup"
+                          checked={(selectedBackup ?? recoveryPreview.latestId) === backup.id}
+                          onChange={() => setSelectedBackup(backup.id)}
+                        />{' '}
+                        {backup.createdAt}
+                        {backup.isLatest ? '（最近）' : ''} · {backup.files.length} 个文件
+                        {backup.missing.length > 0 ? ` · 缺 ${backup.missing.join('、')}` : ''}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="muted">
+                    当前已安装插件：{recoveryPreview.currentPlugins.length === 0
+                      ? '（没有读取到插件，可能尚未部署）'
+                      : recoveryPreview.currentPlugins.map((p) => `${p.name}@${p.version ?? '?'}`).join('、')}
+                  </p>
+                  <p className="muted">
+                    恢复后
+                    {recoveryPreview.rebuild.willRun
+                      ? `会执行 ${recoveryPreview.rebuild.command} 重建依赖，可能需要几分钟。`
+                      : '本机没有可用 pnpm：只还原文件，依赖需要你手工重建。'}
+                  </p>
+                  <pre className="evidence">{recoveryPreview.warnings.join('\n')}</pre>
+                  <p className="muted">备份与数据目录：{recoveryPreview.dataDir}</p>
+                </>
+              )}
+            </div>
+            <div className="row">
+              <button
+                className="primary"
+                onClick={confirmRecovery}
+                disabled={Boolean(busy) || !recoveryPreview?.available}
+              >
+                {busy === 'recovery' ? '恢复中…' : '确认恢复'}
               </button>
               <button onClick={() => setModal(null)} disabled={Boolean(busy)}>
                 取消

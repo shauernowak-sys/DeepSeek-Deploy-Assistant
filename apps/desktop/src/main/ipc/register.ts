@@ -16,6 +16,7 @@ import {
   PersonalQqBindSchema,
   PersonalQqOpenSchema,
   PersonalQqVerifyMessageSchema,
+  ProfileRestoreSchema,
   SnowLumaEmptySchema,
   SnowLumaRestoreConfigSchema,
   SnowLumaRunStepSchema,
@@ -42,6 +43,7 @@ import type { ApiService } from '../services/api-service';
 import type { QqService } from '../services/qq-service';
 import type { PersonalQqService } from '../services/personal-qq-service';
 import type { SnowLumaDeploymentService } from '../services/snowluma-deployment-service';
+import type { ProfileRecoveryService } from '../services/profile-recovery-service';
 import { Secrets } from '../security/secrets';
 
 /**
@@ -61,6 +63,7 @@ export interface IpcContext {
   qq: QqService;
   personal: PersonalQqService;
   deployment: SnowLumaDeploymentService;
+  recovery: ProfileRecoveryService;
   broadcast: (event: TaskEvent) => void;
 }
 
@@ -275,6 +278,14 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle('task:rollback-preview', async (_event, raw: unknown) => {
     TaskIdSchema.parse(raw);
     return ctx.deploy.rollbackPreview();
+  });
+
+  // ---- §21.10「回到上一可用」：profile 备份恢复（D08 能力 → 用户入口）----
+  ipcMain.handle('profile:recovery-preview', async () => ctx.recovery.preview());
+
+  ipcMain.handle('profile:restore', async (_event, raw: unknown) => {
+    const input = ProfileRestoreSchema.parse(raw);
+    return ctx.recovery.restore(input);
   });
 
   ipcMain.handle('task:rollback', async (_event, raw: unknown) => {
