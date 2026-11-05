@@ -2,6 +2,15 @@
   "schemaVersion": 1,
   "entries": [
     {
+      "id": "C4-rc3",
+      "dsh": "0.2.1-rc.3",
+      "qqbot": "0.5.5",
+      "node": ">= 20.3.0",
+      "status": "verified-local",
+      "evidence": ["docs/M4-Harness版本升级评估.md"],
+      "note": "隔离环境安装并启动，官方 QQ 插件生成绑定入口；上游未声明此组合，真实授权与消息收发仍待验证"
+    },
+    {
       "id": "C1-rc8",
       "dsh": "0.1.0-rc.8",
       "qqbot": "0.5.5",

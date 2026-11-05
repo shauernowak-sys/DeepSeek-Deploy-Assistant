@@ -18,20 +18,38 @@
       },
       "companion": {
         "title": {
-          "en": "Companion & interaction",
-          "zh": "陪伴互动"
+          "en": "Personas & companions",
+          "zh": "人设与陪伴"
+        }
+      },
+      "memory": {
+        "title": {
+          "en": "Memory",
+          "zh": "记忆"
+        }
+      },
+      "voice": {
+        "title": {
+          "en": "Voice",
+          "zh": "语音"
+        }
+      },
+      "images-memes": {
+        "title": {
+          "en": "Images & memes",
+          "zh": "图片与表情包"
+        }
+      },
+      "proactive-social": {
+        "title": {
+          "en": "Proactive messages & QZone",
+          "zh": "主动消息与 QQ 空间"
         }
       },
       "ui-widget": {
         "title": {
           "en": "Interface widgets",
           "zh": "界面小组件"
-        }
-      },
-      "memory": {
-        "title": {
-          "en": "Memory",
-          "zh": "记忆增强"
         }
       },
       "dev-tools": {
@@ -64,6 +82,54 @@
         "title": {
           "en": "Not verified",
           "zh": "未验证"
+        }
+      },
+      "bridge": {
+        "title": {
+          "en": "Bridge program",
+          "zh": "桥接程序"
+        }
+      },
+      "persona": {
+        "title": {
+          "en": "Persona",
+          "zh": "人设"
+        }
+      },
+      "memory": {
+        "title": {
+          "en": "Memory",
+          "zh": "记忆"
+        }
+      },
+      "voice": {
+        "title": {
+          "en": "Voice",
+          "zh": "语音"
+        }
+      },
+      "meme": {
+        "title": {
+          "en": "Memes",
+          "zh": "表情包"
+        }
+      },
+      "qzone": {
+        "title": {
+          "en": "QZone",
+          "zh": "QQ 空间"
+        }
+      },
+      "proactive": {
+        "title": {
+          "en": "Proactive messages",
+          "zh": "主动消息"
+        }
+      },
+      "needs-snowluma": {
+        "title": {
+          "en": "Requires SnowLuma",
+          "zh": "需要 SnowLuma"
         }
       }
     },
@@ -117,7 +183,7 @@
             "type": "npm"
           },
           "engines": {
-            "dsh": "=0.2.0-rc.2"
+            "dsh": "=0.2.1-rc.3"
           }
         }
       ]

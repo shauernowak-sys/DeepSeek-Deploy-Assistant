@@ -17,6 +17,7 @@ import { QqService } from './services/qq-service';
 import { PersonalQqService } from './services/personal-qq-service';
 import { SnowLumaDeploymentService } from './services/snowluma-deployment-service';
 import { ProfileRecoveryService } from './services/profile-recovery-service';
+import { PluginInventoryService } from './services/plugin-inventory-service';
 import { attachEventForwarding, registerIpc } from './ipc/register';
 import { describeStartupError, recordStartupFailure } from './startup-guard';
 
@@ -238,6 +239,8 @@ if (!gotLock) {
       },
     });
     const diagnostics = new DiagnosticsService(container, env, harness, () => deploy.summary());
+    // 我的插件：读取真实安装列表、真实设置入口与带备份的卸载。
+    const plugins = new PluginInventoryService(container, harness);
     // §21.10「回到上一可用」：D08 的备份/恢复能力接到用户入口，恢复前先打保险备份。
     const recovery = new ProfileRecoveryService({
       container,
@@ -274,6 +277,7 @@ if (!gotLock) {
       personal,
       deployment,
       recovery,
+      plugins,
       broadcast,
     });
 

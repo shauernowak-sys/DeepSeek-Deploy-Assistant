@@ -1,5 +1,5 @@
 import { DdaError, ERROR_CODES } from '@dda/spec';
-import type { CatalogEntry, CompatMatrix, PluginState } from '@dda/spec';
+import type { CatalogEntry, CompatMatrix, MarketInstallProgressEvent, PluginState } from '@dda/spec';
 
 import { assertCombination } from '../compat/matrix';
 import { parseComposedDump } from '../api/verify';
@@ -74,10 +74,16 @@ export interface PluginInstallDeps {
   readProfileDependency?: () => Promise<string | undefined>;
   /** 第 7 步：`--dump-config` 输出；缺省则记 `unverified`。 */
   dumpConfig?: () => Promise<string>;
-  /** 第 8 步：返回问题列表；空数组表示格式合法。缺省则记 `unverified`。 */
-  checkConfig?: () => Promise<string[]>;
+  /**
+   * 第 8 步：返回「是否已经配置」与问题列表。
+   * 首次安装时插件还没有任何配置属于正常状态，不算失败；只有**存在但格式不对**才失败。
+   * 缺省则记 `unverified`。
+   */
+  checkConfig?: () => Promise<{ configured: boolean; problems: string[] }>;
   /** 第 9 步：真实连通探测。缺省则记 `unverified`。 */
   probeConnectivity?: () => Promise<{ verified: boolean; detail: string }>;
+  /** 面向界面的真实进度；不替代日志，也不得携带命令输出或密钥。 */
+  onProgress?: (event: MarketInstallProgressEvent) => void;
   log?: (line: string) => void;
   /** 可重试步骤的最大尝试次数（默认 2）。 */
   attempts?: number;
@@ -148,12 +154,24 @@ async function runStep(
   attempts: number,
   outcomes: PluginInstallStepOutcome[],
   log: (line: string) => void,
+  onProgress?: (event: MarketInstallProgressEvent) => void,
 ): Promise<void> {
   if (action === undefined) {
     outcomes.push({ index: step.index, id: step.id, status: 'unverified', attempts: 0, detail: '本机不具备该项证据源' });
     log(`第 ${step.index} 步（${step.id}）：未验证（无证据源）`);
+    onProgress?.({
+      phase: 'step',
+      message: `第 ${step.index} 步：${step.title}（未验证）`,
+      step: { index: step.index, id: step.id, title: step.title, status: 'unverified' },
+    });
     return;
   }
+
+  onProgress?.({
+    phase: 'step',
+    message: `第 ${step.index} 步：${step.title}…`,
+    step: { index: step.index, id: step.id, title: step.title, status: 'running' },
+  });
 
   const maxAttempts = step.retryable ? attempts : 1;
   let lastError: unknown;
@@ -168,6 +186,11 @@ async function runStep(
         ...(detail === undefined ? {} : { detail }),
       });
       log(`第 ${step.index} 步（${step.id}）：通过${detail === undefined ? '' : ` — ${detail}`}`);
+      onProgress?.({
+        phase: 'step',
+        message: `第 ${step.index} 步：${step.title}（完成）`,
+        step: { index: step.index, id: step.id, title: step.title, status: 'succeeded' },
+      });
       return;
     } catch (error) {
       lastError = error;
@@ -183,6 +206,11 @@ async function runStep(
     status: 'failed',
     attempts: maxAttempts,
     detail: describe(lastError),
+  });
+  onProgress?.({
+    phase: 'step',
+    message: `第 ${step.index} 步：${step.title}（失败）`,
+    step: { index: step.index, id: step.id, title: step.title, status: 'failed' },
   });
   if (lastError instanceof DdaError) {
     throw new DdaError(
@@ -208,6 +236,7 @@ export async function installCatalogPlugin(
 ): Promise<PluginInstallOutcome> {
   const { entry, matrix } = request;
   const log = deps.log ?? (() => undefined);
+  const onProgress = deps.onProgress;
   const attempts = deps.attempts ?? 2;
   const outcomes: PluginInstallStepOutcome[] = [];
   let target: { spec: string; registry?: string } | undefined;
@@ -233,9 +262,15 @@ export async function installCatalogPlugin(
 
   const plannedTiming = deps.plan ?? registryPlan();
 
+  onProgress?.({
+    phase: 'starting',
+    message: `准备安装 ${entry.name}@${entry.version}`,
+  });
+
   if (change.action === 'none') {
     // 同版本：不发起任何 pnpm 调用（不重装、不校验 registry、不动 profile）。
     log(`已安装 ${entry.name}@${entry.version}，同版本不再重复安装`);
+    onProgress?.({ phase: 'done', message: `已安装 ${entry.name}@${entry.version}，未重复安装` });
     return {
       spec: marketInstallTarget(entry.name, entry).spec,
       installSource: 'registry',
@@ -276,6 +311,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   await runStep(
@@ -287,6 +323,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   const localSpec = request.localSpec === undefined ? undefined : request.localSpec;
@@ -302,6 +339,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
   const installTarget = target ?? marketInstallTarget(entry.name, entry);
   const effectiveSpec = localSpec ?? installTarget.spec;
@@ -318,6 +356,11 @@ export async function installCatalogPlugin(
       detail: '离线模式：使用本地 tgz，不使用 registry',
     });
     log('第 4 步（registry）：跳过（离线模式）');
+    onProgress?.({
+      phase: 'step',
+      message: '第 4 步：确定 registry 计划（离线模式，跳过）',
+      step: { index: 4, id: 'registry', title: '确定 registry 计划', status: 'skipped' },
+    });
   } else {
     await runStep(
       PLUGIN_INSTALL_STEPS[3]!,
@@ -328,6 +371,7 @@ export async function installCatalogPlugin(
       attempts,
       outcomes,
       log,
+      onProgress,
     );
   }
 
@@ -354,6 +398,24 @@ export async function installCatalogPlugin(
         spec: installTarget.spec,
         plan,
         log,
+        onAttempt: ({ layer, index, total, ok }) => {
+          onProgress?.({
+            phase: 'source',
+            message:
+              ok === undefined
+                ? `正在从${layer.label}下载（${index}/${total}）`
+                : ok
+                  ? `已从${layer.label}下载完成`
+                  : `${layer.label}不可用，尝试下一个来源`,
+            source: {
+              label: layer.label,
+              url: layer.url,
+              attempt: index,
+              total,
+              ...(ok === undefined ? {} : { ok }),
+            },
+          });
+        },
         install: async (layer) => {
           try {
             const output = await deps.addPlugin(layer);
@@ -375,6 +437,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   await runStep(
@@ -400,6 +463,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   await runStep(
@@ -426,6 +490,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   await runStep(
@@ -433,13 +498,16 @@ export async function installCatalogPlugin(
     deps.checkConfig === undefined
       ? undefined
       : async () => {
-          const problems = await deps.checkConfig!();
-          if (problems.length > 0) throw new Error(problems.join('；'));
-          return '字段格式合法（未验证生效）';
+          const result = await deps.checkConfig!();
+          if (result.problems.length > 0) throw new Error(result.problems.join('；'));
+          return result.configured
+            ? '字段格式合法（未验证生效）'
+            : '尚未配置：安装完成后到插件自己的设置页完成授权';
         },
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   await runStep(
@@ -455,6 +523,7 @@ export async function installCatalogPlugin(
     attempts,
     outcomes,
     log,
+    onProgress,
   );
 
   return {

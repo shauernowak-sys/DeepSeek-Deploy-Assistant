@@ -1,6 +1,6 @@
 {
   "name": "deepseek-deploy-assistant",
-  "version": "0.2.0",
+  "version": "0.1.1",
   "private": true,
   "main": "out/main/index.js",
   "description": "DeepSeek Deploy Assistant - Windows per-user deployment assistant for DeepSeek Harness",
@@ -25,6 +25,7 @@
     "e2e:install": "tsx scripts/install-e2e.ts",
     "ui:smoke:recovery": "node scripts/m4-recovery-ui-smoke.mjs",
     "ui:smoke:a11y": "node scripts/m4-a11y-ui-smoke.mjs",
+    "ui:smoke:market": "node scripts/m4-market-ui-smoke.mjs",
     "verify": "npm run typecheck && npm run test && npm run license:check && npm run notices:check && npm run licenses:check",
     "dist": "electron-vite build && electron-builder --win --dir --x64 && node scripts/set-win-version.mjs && electron-builder --win nsis --x64 --prepackaged release/win-unpacked",
     "dist:dir": "electron-vite build && electron-builder --win --dir --x64 && node scripts/set-win-version.mjs"

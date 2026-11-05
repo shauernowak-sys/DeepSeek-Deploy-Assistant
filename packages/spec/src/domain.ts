@@ -1,10 +1,10 @@
 export const APP_NAME = 'DeepSeekDeployAssistant';
 
-/** Locked M1 baseline (see docs/M0-技术验证报告.md and docs/04-最终决策清单.md). */
+/** 产品锁定的运行时组合；历史基线与升级记录见交接文档。 */
 export const BASELINE = {
   node: { version: '22.23.4' },
   pnpm: { version: '11.28.5' },
-  dsh: { version: '0.2.0-rc.2', profile: 'web' },
+  dsh: { version: '0.2.1-rc.3', profile: 'web' },
   /** `connector` 是官方 QQ 插件的运行时依赖，其许可为 UNLICENSED（2026-11-04 实测确认）。 */
   qqbot: { version: '0.5.5', connector: '1.2.0' },
 } as const;

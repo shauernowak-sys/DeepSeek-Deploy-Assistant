@@ -1,4 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
+import { get as httpGet, type IncomingMessage } from 'node:http';
+import { get as httpsGet } from 'node:https';
 import { join } from 'node:path';
 import { constants as fsConstants } from 'node:fs';
 
@@ -36,6 +38,7 @@ import {
   PERSONAL_QQ_ADAPTER,
   QQ_PLUGIN_DISTRIBUTION,
   type HealthReport,
+  type MarketInstallProgressEvent,
   type PluginState,
 } from '@dda/spec';
 
@@ -242,6 +245,55 @@ export class HarnessService {
     return (await this.getCli()).listPlugins(BASELINE.dsh.profile);
   }
 
+  /** 组合后的配置树：用来判断某个插件是否真的会被加载（只读）。 */
+  async dumpProfileConfig(): Promise<string> {
+    return (await this.getCli()).dumpConfig(BASELINE.dsh.profile);
+  }
+
+  /**
+   * 运行中的 Harness 页面实际下发给浏览器的客户端模块 id。
+   *
+   * 这是「已加载」的**真实证据**：HTML 里 `plugins/??a/client.js,b/client.js` 的列表由
+   * 已挂载的插件生成，未加载的插件不会出现。读取失败返回 `undefined`（不等于「没加载」）。
+   */
+  async clientModuleIds(): Promise<string[] | undefined> {
+    if (!this.session) return undefined;
+    try {
+      // 带 token 的地址会换取签名 cookie 并跳转到同一目录；用 node:http 而不是 fetch，
+      // 是因为主进程的 fetch 会继承系统代理设置，本机回环地址不该经过代理。
+      const first = await httpGetText(this.session.url);
+      const page = first.location === undefined
+        ? first
+        : await httpGetText(new URL(first.location, this.session.url).href, first.cookie);
+      if (page.status >= 400 || page.body === '') {
+        await this.container.logger.warn('plugin', `Harness 页面读取失败：HTTP ${page.status}`);
+        return undefined;
+      }
+      const ids = new Set<string>();
+      for (const match of page.body.matchAll(/plugins\/\?\?([^"&]+)/g)) {
+        for (const part of match[1]!.split(',')) {
+          const id = part.trim().replace(/\/client\.js$/, '');
+          if (id !== '') ids.add(id);
+        }
+      }
+      return [...ids];
+    } catch (error) {
+      await this.container.logger.warn(
+        'plugin',
+        `读取 Harness 页面模块清单失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  /** Harness 版本（按运行时选择；未部署时 `undefined`）。 */
+  async version(): Promise<string | undefined> {
+    const runtime = await loadRuntimeSelection(this.container.paths);
+    const bin = runtime.harness.bin ?? dshBinJs(this.container.paths);
+    if (!(await fileExists(bin))) return undefined;
+    return runtime.harness.version;
+  }
+
   /**
    * D08：恢复到某个 profile 备份，并按还原后的 lockfile 重建依赖。
    * `restoreProfileBackup` 给出必须的 pnpm 参数（含 `--force`，普通 install 会被判 up to date）。
@@ -279,7 +331,11 @@ export class HarnessService {
    * P-10 + D03：官方插件的唯一安装入口。9 步编排里第 1 步就是 compat 门禁，
    * 之后才是 precheck/spec/registry/install/复核，第 7–9 步缺证据时明确记 unverified。
    */
-  private async installGated(spec: string, allow: { catalog: boolean; adapter: boolean }): Promise<void> {
+  private async installGated(
+    spec: string,
+    allow: { catalog: boolean; adapter: boolean },
+    onProgress?: (event: MarketInstallProgressEvent) => void,
+  ): Promise<void> {
     assertPluginInstallAllowed({
       matrix: this.container.matrix,
       spec,
@@ -290,6 +346,8 @@ export class HarnessService {
     if (allow.catalog) assertDistributionAllowed(QQ_PLUGIN_DISTRIBUTION, 'online-install');
 
     const cli = await this.getCli();
+    const storeDir = await this.profileStoreDir();
+    const store = storeDir === undefined ? {} : { storeDir };
     const entry = allow.catalog ? findMarketEntryBySpec(spec) : undefined;
     if (entry !== undefined) {
       const profileDir = join(this.container.paths.dshHome, 'profiles', BASELINE.dsh.profile);
@@ -308,10 +366,10 @@ export class HarnessService {
             await access(this.container.paths.dshHome, fsConstants.W_OK);
           },
           addPlugin: async (layer) => {
-            const result = await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url });
+            const result = await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url, ...store });
             return `${result.stdout}\n${result.stderr}`;
           },
-          removePlugin: () => cli.removePlugin(BASELINE.dsh.profile, entry.name),
+          removePlugin: () => cli.removePlugin(BASELINE.dsh.profile, entry.name, store),
           backupProfile: async () => {
             const backup = await createProfileBackup({
               profileDir,
@@ -322,6 +380,7 @@ export class HarnessService {
           listPlugins: () => cli.listPlugins(BASELINE.dsh.profile),
           dumpConfig: () => cli.dumpConfig(BASELINE.dsh.profile),
           checkConfig: async () => this.checkPluginConfig(),
+          ...(onProgress === undefined ? {} : { onProgress }),
           log: (line) => {
             void this.container.logger.info('plugin', line);
           },
@@ -342,37 +401,41 @@ export class HarnessService {
         void this.container.logger.info('plugin', line);
       },
       install: async (layer) => {
-        await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url });
+        await cli.addPlugin(BASELINE.dsh.profile, spec, { registry: layer.url, ...store });
       },
     });
     await this.container.logger.info('plugin', `installed ${spec} from ${result.registry.id}`);
   }
 
-  /** 步骤 8：只检查「字段存在且格式合法」，不代表已生效。 */
-  private async checkPluginConfig(): Promise<string[]> {
+  /**
+   * 步骤 8：只检查「字段存在且格式合法」，不代表已生效。
+   * 没有 `im-qqbot` 条目表示用户还没在插件里配置过（首次安装的正常状态），不是失败。
+   */
+  private async checkPluginConfig(): Promise<{ configured: boolean; problems: string[] }> {
     const patchPath = join(
       this.container.paths.dshHome,
       'profiles',
       BASELINE.dsh.profile,
       'cordis.patch.yml',
     );
-    if (!(await fileExists(patchPath))) return ['profile 补丁文件不存在'];
+    if (!(await fileExists(patchPath))) return { configured: false, problems: [] };
     const entry = readQqEntry(await readFile(patchPath, 'utf8'));
-    if (!entry.present) return ['补丁中没有 im-qqbot 条目'];
+    if (!entry.present) return { configured: false, problems: [] };
     const problems: string[] = [];
     const access = entry.config.access as { c2cMode?: unknown; groupMode?: unknown } | undefined;
     if (access === undefined || typeof access !== 'object') problems.push('缺少 access 配置');
     else if (typeof access.c2cMode !== 'string' || typeof access.groupMode !== 'string') {
       problems.push('access.c2cMode / access.groupMode 缺失或类型不对');
     }
-    return problems;
+    return { configured: true, problems };
   }
 
-  async installQqPlugin(): Promise<void> {
-    return this.installGated(`@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`, {
-      catalog: true,
-      adapter: false,
-    });
+  async installQqPlugin(onProgress?: (event: MarketInstallProgressEvent) => void): Promise<void> {
+    return this.installGated(
+      `@tencent-connect/dsh-qqbot@${BASELINE.qqbot.version}`,
+      { catalog: true, adapter: false },
+      onProgress,
+    );
   }
 
   /** 个人 QQ 适配插件：白名单内唯一允许代装的第三方插件（不属于 compat 的三元组）。 */
@@ -381,7 +444,31 @@ export class HarnessService {
   }
 
   async removePlugin(name: string): Promise<void> {
-    return (await this.getCli()).removePlugin(BASELINE.dsh.profile, name);
+    const storeDir = await this.profileStoreDir();
+    return (await this.getCli()).removePlugin(BASELINE.dsh.profile, name, storeDir === undefined ? {} : { storeDir });
+  }
+
+  /**
+   * profile 的依赖是从哪个 pnpm store 链接来的（pnpm 记在 `node_modules/.modules.yaml`）。
+   * 不沿用它会触发 `ERR_PNPM_UNEXPECTED_STORE`：用户换过 pnpm 配置或 store 位置时，
+   * 「能装不能卸」看起来就像插件坏了。
+   */
+  private async profileStoreDir(): Promise<string | undefined> {
+    const modulesYaml = join(
+      this.container.paths.dshHome,
+      'profiles',
+      BASELINE.dsh.profile,
+      'node_modules',
+      '.modules.yaml',
+    );
+    const raw = await readFile(modulesYaml, 'utf8').catch(() => undefined);
+    if (raw === undefined) return undefined;
+    try {
+      const parsed = JSON.parse(raw) as { storeDir?: unknown };
+      return typeof parsed.storeDir === 'string' && parsed.storeDir !== '' ? parsed.storeDir : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -396,4 +483,47 @@ export class HarnessService {
   get bindUrl(): string | undefined {
     return this.session?.url;
   }
+}
+
+interface HttpTextResult {
+  status: number;
+  body: string;
+  cookie?: string;
+  location?: string;
+}
+
+/**
+ * 一次 GET，自动带走登录 cookie 所需的原始 `set-cookie`。
+ * 不走系统代理：这是本机回环地址，经过代理既慢又可能直接失败（P-11 同类问题）。
+ */
+function httpGetText(url: string, cookie?: string): Promise<HttpTextResult> {
+  const parsed = new URL(url);
+  const load = parsed.protocol === 'https:' ? httpsGet : httpGet;
+  return new Promise((resolve, reject) => {
+    const request = load(
+      parsed,
+      {
+        headers: {
+          accept: 'text/html',
+          ...(cookie === undefined ? {} : { cookie }),
+        },
+        timeout: 8000,
+      },
+      (response: IncomingMessage) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          const setCookie = response.headers['set-cookie'];
+          resolve({
+            status: response.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8'),
+            ...(Array.isArray(setCookie) ? { cookie: setCookie.map((item) => item.split(';')[0]).join('; ') } : {}),
+            ...(typeof response.headers.location === 'string' ? { location: response.headers.location } : {}),
+          });
+        });
+      },
+    );
+    request.on('timeout', () => request.destroy(new Error('读取 Harness 页面超时')));
+    request.on('error', reject);
+  });
 }

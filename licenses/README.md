@@ -7,7 +7,7 @@
 
 | 文件 | 包 | 版本 | 许可 | 来源 |
 |---|---|---|---|---|
-| `dsh-LICENSE.txt` | @deepseek-ai/dsh | 0.2.0-rc.2 | MIT | Harness |
+| `dsh-LICENSE.txt` | @deepseek-ai/dsh | 0.2.1-rc.3 | MIT | Harness |
 | `node-LICENSE.txt` | node | 22.23.4 | MIT | Node.js 运行时 |
 | `npm/argparse@2.0.1.txt` | argparse | 2.0.1 | Python-2.0 | 本产品生产依赖 |
 | `npm/js-tokens@4.0.0.txt` | js-tokens | 4.0.0 | MIT | 本产品生产依赖 |

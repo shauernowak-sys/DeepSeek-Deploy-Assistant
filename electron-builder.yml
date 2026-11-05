@@ -28,7 +28,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: deepseek-deploy-assistant-${version}-${arch}.${ext}
+  artifactName: DeepSeek-Deploy-Assistant-Test-V${version}-${arch}.${ext}
   # Never ask for elevation: per-user install, matches ADR-006.
   requestedExecutionLevel: asInvoker
   # M2.1: electron-builder's own resource editing (+ signing) is skipped because on a non-admin

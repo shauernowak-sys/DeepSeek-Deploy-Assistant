@@ -25,7 +25,16 @@ import {
 } from '@dda/spec';
 
 const MANIFESTS = join(__dirname, '..', '..', 'apps', 'desktop', 'resources', 'manifests');
-const LOCKED_DSH = '0.2.0-rc.2';
+const LOCKED_DSH = '0.2.1-rc.3';
+
+/** 7 条做过 D11 闭包 + D03 安装探测的 npm 候选。 */
+const AUDITED_CANDIDATES = CATALOG_CANDIDATES.filter(
+  (candidate) => candidate.review.closureAudit !== undefined,
+);
+/** 2026-11-05 生态调研新收录、尚未做闭包/安装探测的候选（GitHub 源为主）。 */
+const DISCOVERY_CANDIDATES = CATALOG_CANDIDATES.filter(
+  (candidate) => candidate.review.closureAudit === undefined,
+);
 
 let cachedMatrix: CompatMatrix | undefined;
 
@@ -87,9 +96,47 @@ describe('D09 完整策展：候选集范围与定位', () => {
   it('每条候选都记录了取数事实与来源，便于复核', () => {
     for (const candidate of CATALOG_CANDIDATES) {
       expect(candidate.review.evaluatedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(candidate.review.source).toMatch(/^https:\/\/registry\.npmjs\.org\//);
+      expect(candidate.review.source).toMatch(/^https:\/\//);
       expect(candidate.review.facts.license).toBe(candidate.review.facts.license.trim());
-      expect(candidate.review.facts.unpackedSizeBytes).toBeGreaterThan(0);
+      if (candidate.source.type === 'npm') {
+        expect(candidate.review.source).toMatch(/^https:\/\/registry\.npmjs\.org\//);
+        expect(candidate.review.facts.unpackedSizeBytes).toBeGreaterThan(0);
+      } else {
+        expect(candidate.review.facts.unpackedSizeBytes).toBe(0);
+        expect(candidate.market.sizeNote).toBeTruthy();
+      }
+    }
+  });
+
+  it('新收录项目区分插件、桥接程序、工具与参考资料，并记录适用路线', () => {
+    expect(DISCOVERY_CANDIDATES.length).toBeGreaterThanOrEqual(6);
+    for (const candidate of DISCOVERY_CANDIDATES) {
+      expect(['plugin', 'bridge', 'tool', 'reference']).toContain(candidate.market.kind);
+      expect(['official-qq', 'personal-qq', 'unconfirmed']).toContain(candidate.market.route);
+      expect(['npm', 'github', 'manual', 'none']).toContain(candidate.market.installMethod);
+      expect(Array.isArray(candidate.market.requires)).toBe(true);
+      expect(Array.isArray(candidate.market.conflicts)).toBe(true);
+      expect(candidate.market.support).toBeDefined();
+      for (const level of [
+        candidate.market.support!.windowsX64,
+        candidate.market.support!.lockedDsh,
+        candidate.market.support!.webProfile,
+      ]) {
+        expect(['verified', 'declared', 'unverified', 'unsupported']).toContain(level);
+      }
+    }
+    expect(DISCOVERY_CANDIDATES.find((c) => c.name === 'qq-bridge')?.market.kind).toBe('bridge');
+    expect(DISCOVERY_CANDIDATES.find((c) => c.name === 'dsh-qq-tools')?.market.kind).toBe('tool');
+  });
+
+  it('公开关注度只作展示，并带查询日期与来源链接', () => {
+    for (const candidate of CATALOG_CANDIDATES) {
+      const attention = candidate.market.attention;
+      if (attention === undefined) continue;
+      expect(attention.source).toBe('github');
+      expect(attention.queriedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(attention.url).toMatch(/^https:\/\/github\.com\//);
+      expect(attention.stars).toBeGreaterThanOrEqual(0);
     }
   });
 });
@@ -112,7 +159,7 @@ describe('D09 完整策展：拒绝理由的结构与自洽', () => {
   });
 
   it('含阻断类理由 → 必须 blocked（改成 needs-review 会被拒）', async () => {
-    const bad = cloneCandidate('dsh-pet');
+    const bad = cloneCandidate('@8kugames/dsh-zed-acp');
     bad.status = 'needs-review';
     const problems = collectCandidateProblems(CATALOG, [bad], await matrix());
     expect(problems.join('\n')).toContain('status 必须为 blocked');
@@ -127,6 +174,7 @@ describe('D09 完整策展：拒绝理由的结构与自洽', () => {
 
   it('声明兼容版本不含锁定宿主 → 必须 host-version-incompatible', async () => {
     const bad = cloneCandidate('dsh-pet');
+    bad.review.facts.declaredDshReleases = ['0.2.0-rc.2'];
     bad.review.blockers = bad.review.blockers.filter((b) => b.code !== 'host-version-incompatible');
     const problems = collectCandidateProblems(CATALOG, [bad], await matrix());
     expect(problems.join('\n')).toContain('blockers 必须包含 host-version-incompatible');
@@ -135,6 +183,7 @@ describe('D09 完整策展：拒绝理由的结构与自洽', () => {
   it('声称不兼容、但事实声明里含锁定宿主 → 被拒（事实矛盾）', async () => {
     const bad = cloneCandidate('dsh-pet');
     bad.review.facts.declaredDshReleases = [LOCKED_DSH];
+    bad.review.blockers.push({ code: 'host-version-incompatible', detail: '故意写错当前宿主的兼容性' });
     const problems = collectCandidateProblems(CATALOG, [bad], await matrix());
     expect(problems.join('\n')).toContain('事实矛盾');
   });
@@ -207,8 +256,9 @@ describe('D09 完整策展：拒绝理由的结构与自洽', () => {
 });
 
 describe('D09 完整策展：真实审计证据（D11 闭包 + D03 安装探测）', () => {
-  it('每条候选都有闭包审计与逐包裁决（不再有 closure-not-audited）', () => {
-    for (const candidate of CATALOG_CANDIDATES) {
+  it('已审计的 7 条候选都有闭包审计与逐包裁决（不再有 closure-not-audited）', () => {
+    expect(AUDITED_CANDIDATES).toHaveLength(7);
+    for (const candidate of AUDITED_CANDIDATES) {
       expect(candidate.review.closureAudit).toBeDefined();
       expect(candidate.depsClosure.length).toBeGreaterThanOrEqual(1);
       expect(candidate.review.closureAudit?.packageCount).toBe(candidate.depsClosure.length);
@@ -217,8 +267,17 @@ describe('D09 完整策展：真实审计证据（D11 闭包 + D03 安装探测�
     }
   });
 
+  it('新收录候选必须显式标注未审计，不得冒充已审计', () => {
+    expect(DISCOVERY_CANDIDATES.length).toBeGreaterThanOrEqual(6);
+    for (const candidate of DISCOVERY_CANDIDATES) {
+      expect(candidate.review.closureAudit).toBeUndefined();
+      expect(candidate.depsClosure).toEqual([]);
+      expect(candidate.review.blockers.map((b) => b.code)).toContain('closure-not-audited');
+    }
+  });
+
   it('审计结论与现算结果一致（防止审计后闭包被改却不重算）', () => {
-    for (const candidate of CATALOG_CANDIDATES) {
+    for (const candidate of AUDITED_CANDIDATES) {
       const audit = candidate.review.closureAudit!;
       const recomputed = evaluateClosure(`${candidate.name}@${candidate.version}`, candidate.depsClosure);
       expect(recomputed.verdict).toBe(audit.verdict);
@@ -229,20 +288,20 @@ describe('D09 完整策展：真实审计证据（D11 闭包 + D03 安装探测�
   });
 
   it('闭包不允许分发时，blockers 必须显式说明（GPL 之类不得静默放过）', () => {
-    for (const candidate of CATALOG_CANDIDATES) {
+    for (const candidate of AUDITED_CANDIDATES) {
       const audit = candidate.review.closureAudit!;
       if (audit.verdict === 'allowed') continue;
       const codes = candidate.review.blockers.map((blocker) => blocker.code);
       expect(codes.some((code) => code === 'closure-needs-review' || code === 'license-restricted')).toBe(true);
-      expect(candidate.status).toBe('blocked');
+      expect(['blocked', 'needs-review']).toContain(candidate.status);
     }
   });
 
-  it('安装了锁定宿主的真实探测：失败必须记 install-failed，成功必须被 list 到', () => {
-    for (const candidate of CATALOG_CANDIDATES) {
+  it('历史宿主的真实探测：失败必须记 install-failed，成功必须被 list 到', () => {
+    for (const candidate of AUDITED_CANDIDATES) {
       const probe = candidate.review.installProbe;
       expect(probe).toBeDefined();
-      expect(probe?.hostDsh).toBe(LOCKED_DSH);
+      expect(probe?.hostDsh).toBe('0.2.0-rc.2');
       const codes = candidate.review.blockers.map((blocker) => blocker.code);
       if (probe?.installed === false) {
         expect(codes).toContain('install-failed');

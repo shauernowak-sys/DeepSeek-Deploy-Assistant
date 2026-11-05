@@ -97,6 +97,71 @@ export const CatalogAcceptanceSchema = z
 
 export type CatalogAcceptance = z.infer<typeof CatalogAcceptanceSchema>;
 
+/** 项目形态：插件、独立桥接程序、扩展工具、仅供参考的项目。 */
+export const CANDIDATE_PROJECT_KINDS = ['plugin', 'bridge', 'tool', 'reference'] as const;
+export type CandidateProjectKind = (typeof CANDIDATE_PROJECT_KINDS)[number];
+
+/** 适用路线：官方 QQ 机器人、个人 QQ（OneBot/SnowLuma）、尚未确认。 */
+export const CANDIDATE_ROUTES = ['official-qq', 'personal-qq', 'unconfirmed'] as const;
+export type CandidateRoute = (typeof CANDIDATE_ROUTES)[number];
+
+export const CANDIDATE_INSTALL_METHODS = ['npm', 'github', 'manual', 'none'] as const;
+export type CandidateInstallMethod = (typeof CANDIDATE_INSTALL_METHODS)[number];
+
+/**
+ * 公开关注度。星标只表示公开关注度，**不是**真实用户量或安装量；
+ * `queriedAt` 是取数日期，过期后应重新查询而不是继续引用。
+ */
+export const CatalogAttentionSchema = z
+  .object({
+    source: z.literal('github'),
+    stars: z.number().int().nonnegative(),
+    queriedAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD')
+      .refine((value) => !Number.isNaN(Date.parse(value)), 'must be a real date'),
+    url: z.string().url(),
+  })
+  .strict();
+
+/**
+ * 面向用户的发现信息。与 `review` 分开：
+ * `review` 是"为什么不能装"的审核结论，`market` 是"它是什么、要走哪条路、缺什么"的说明。
+ */
+export const CATALOG_SUPPORT_LEVELS = ['verified', 'declared', 'unverified', 'unsupported'] as const;
+export type CatalogSupportLevel = (typeof CATALOG_SUPPORT_LEVELS)[number];
+
+/** 平台/基线支持情况：`declared` = 项目文档声明但本产品未实测。 */
+export const CatalogCandidateSupportSchema = z
+  .object({
+    windowsX64: z.enum(CATALOG_SUPPORT_LEVELS),
+    lockedDsh: z.enum(CATALOG_SUPPORT_LEVELS),
+    webProfile: z.enum(CATALOG_SUPPORT_LEVELS),
+    note: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const CatalogCandidateMarketSchema = z
+  .object({
+    kind: z.enum(CANDIDATE_PROJECT_KINDS),
+    route: z.enum(CANDIDATE_ROUTES),
+    installMethod: z.enum(CANDIDATE_INSTALL_METHODS),
+    /** 安装/运行前需要用户另行准备的外部组件（SnowLuma、Python、QQ 小号等）。 */
+    requires: z.array(z.string().min(1)).default([]),
+    /** 与其他插件同时启用时已知的冲突或重复处理风险。 */
+    conflicts: z.array(z.string().min(1)).default([]),
+    attention: CatalogAttentionSchema.optional(),
+    /** 体积无法从 registry 取得时的可读说明；不要用猜测值填 `facts.unpackedSizeBytes`。 */
+    sizeNote: z.string().min(1).optional(),
+    /** 兼容性结论的出处或范围说明。 */
+    compatibilityNote: z.string().min(1).optional(),
+    /** Windows x64 / 锁定宿主 / web profile 的支持情况。 */
+    support: CatalogCandidateSupportSchema.optional(),
+  })
+  .strict();
+
+export type CatalogCandidateMarket = z.infer<typeof CatalogCandidateMarketSchema>;
+
 export const CatalogEntrySchema = z
   .object({
     /** 稳定标识，不用包名（包名可能变）。 */
@@ -125,6 +190,7 @@ export const CatalogEntrySchema = z
     keywords: z.array(z.string().min(1)).default([]),
     safety: CatalogSafetySchema,
     installNotes: z.array(z.string().min(1)).default([]),
+    market: CatalogCandidateMarketSchema.optional(),
     status: z.enum(CATALOG_STATUSES),
     repository: z
       .object({ url: z.string().url(), directory: z.string().min(1).optional() })
@@ -159,6 +225,7 @@ export const CatalogOverlayEntrySchema = z
     keywords: z.array(z.string()),
     safety: CatalogSafetySchema,
     installNotes: z.array(z.string()),
+    market: CatalogCandidateMarketSchema.optional(),
     status: z.enum(CATALOG_STATUSES),
   })
   .strict();
@@ -204,6 +271,10 @@ export const CANDIDATE_BLOCKER_CODES = [
   'closure-needs-review',
   /** 真实安装探测失败（peer 冲突、需要构建脚本授权、registry 拒绝等）。 */
   'install-failed',
+  /** 项目本体使用禁止商业用途/分发的许可（如 PolyForm Noncommercial）。 */
+  'noncommercial-license',
+  /** 代码许可允许，但角色/图片/模型等素材另有非商业或署名限制。 */
+  'asset-license-restricted',
 ] as const;
 
 export type CandidateBlockerCode = (typeof CANDIDATE_BLOCKER_CODES)[number];
@@ -216,6 +287,7 @@ export const CANDIDATE_BLOCKING_CODES: readonly CandidateBlockerCode[] = [
   'duplicates-product-scope',
   'native-capability-preferred',
   'install-failed',
+  'noncommercial-license',
 ];
 
 export const CatalogCandidateBlockerSchema = z
@@ -224,6 +296,8 @@ export const CatalogCandidateBlockerSchema = z
     detail: z.string().min(6).max(300),
   })
   .strict();
+
+
 
 /** 评估时从 registry 取到的事实，入库以便复核"当时凭什么这样判"。 */
 export const CatalogCandidateFactsSchema = z
@@ -283,7 +357,7 @@ export const CatalogCandidateReviewSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD')
       .refine((value) => !Number.isNaN(Date.parse(value)), 'must be a real date'),
     facts: CatalogCandidateFactsSchema,
-    /** 取数来源（registry URL），便于重放。 */
+    /** 取数来源（registry 或项目仓库 URL），便于重放。 */
     source: z.string().url(),
     /** D11 闭包审计（做了才有；没做时 blockers 必须含 closure-not-audited）。 */
     closureAudit: CatalogCandidateClosureAuditSchema.optional(),
@@ -309,13 +383,15 @@ export const CatalogCandidateSchema = z
     publishTimestamp: z.number().int().nonnegative(),
     source: CatalogSourceSchema,
     license: CatalogLicenseSchema,
-    integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+={0,2}$/, 'must be a sha512 SRI string'),
+    /** npm 包才有 dist.integrity；GitHub 源候选没有可核对的 tarball SRI 时必须留空，不能编造。 */
+    integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+={0,2}$/, 'must be a sha512 SRI string').optional(),
     en: CatalogEnSchema,
     zh: CatalogCandidateZhSchema,
     category: z.string().min(1),
     labels: z.array(z.string().min(1)).default([]),
     keywords: z.array(z.string().min(1)).default([]),
     status: z.enum(CANDIDATE_STATUSES),
+    market: CatalogCandidateMarketSchema,
     review: CatalogCandidateReviewSchema,
     /** 已审计的完整闭包（逐包裁决）；与 `review.closureAudit` 同时出现。 */
     depsClosure: z.array(DepsClosureEntrySchema).default([]),
@@ -354,13 +430,14 @@ export const CatalogOverlayCandidateSchema = z
     version: z.string().min(1),
     status: z.enum(CANDIDATE_STATUSES),
     license: CatalogLicenseSchema,
-    integrity: z.string().min(1),
+    integrity: z.string().min(1).optional(),
     depsClosure: z.array(DepsClosureEntrySchema).default([]),
     zh: CatalogCandidateZhSchema,
     category: z.string().min(1),
     labels: z.array(z.string()),
     keywords: z.array(z.string()),
     installNotes: z.array(z.string()),
+    market: CatalogCandidateMarketSchema,
     review: CatalogCandidateReviewSchema,
   })
   .strict();
@@ -380,4 +457,28 @@ export const CatalogOverlaySchema = z
 
 export type CatalogOverlay = z.infer<typeof CatalogOverlaySchema>;
 export type CatalogOverlayEntry = z.infer<typeof CatalogOverlayEntrySchema>;
+
+/**
+ * 安装过程中的真实进度事件（主进程 → 渲染层）。
+ *
+ * 只暴露步骤序号、名称、状态与实际使用的源；**不携带**命令输出、令牌或聊天内容。
+ * `source` 只会在真正开始/结束一次源尝试时出现，不用来宣称"一定可达"。
+ */
+export type MarketInstallProgressEvent = {
+  phase: 'starting' | 'step' | 'source' | 'done' | 'failed';
+  message: string;
+  step?: {
+    index: number;
+    id: string;
+    title: string;
+    status: 'running' | 'succeeded' | 'failed' | 'skipped' | 'unverified';
+  };
+  source?: {
+    label: string;
+    url?: string;
+    attempt?: number;
+    total?: number;
+    ok?: boolean;
+  };
+};
 

@@ -178,6 +178,15 @@ export function collectCandidateProblems(
       problems.push(`${label}: 许可为 ${candidate.review.facts.license}，不应判 license-restricted（事实矛盾）`);
     }
 
+    // 6b) 禁止商业用途的许可必须单独标注：它不同于"许可不明"，但同样不能进入可分发清单。
+    const noncommercial = /NONCOMMERCIAL|NON-COMMERCIAL|CC-BY-NC|BY-NC/.test(rawLicense);
+    if (noncommercial && !codes.has('noncommercial-license')) {
+      problems.push(`${label}: 许可为 ${candidate.review.facts.license}，blockers 必须包含 noncommercial-license`);
+    }
+    if (!noncommercial && codes.has('noncommercial-license')) {
+      problems.push(`${label}: 许可为 ${candidate.review.facts.license}，不应判 noncommercial-license（事实矛盾）`);
+    }
+
     // 6) 发布者追溯：只有 1 个维护者且无仓库/主页，必须标注。
     if (
       candidate.author === undefined &&

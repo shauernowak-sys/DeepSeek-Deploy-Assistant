@@ -17,8 +17,8 @@ export const OFFICIAL_QQBOT_ENTRY: CatalogEntry = {
   publishTimestamp: 1793375955,
   source: { type: 'npm' },
   // 只宣称本机验证过的宿主版本，不用宽范围把未验证的 dsh 也说成「兼容」。
-  enginesDsh: '=0.2.0-rc.2',
-  compat: 'C1-prime',
+  enginesDsh: '=0.2.1-rc.3',
+  compat: 'C4-rc3',
   license: {
     spdx: 'MIT',
     // 本体 MIT，但闭包含 @tencent-connect/qqbot-connector@1.2.0（UNLICENSED）→ 整包不可分发。
@@ -81,6 +81,29 @@ export const OFFICIAL_QQBOT_ENTRY: CatalogEntry = {
     '安装完成后需要重启 Harness，插件才会被加载',
     '该插件的运行时依赖含 UNLICENSED 组件，因此只支持在线安装，不提供离线包',
   ],
+  market: {
+    kind: 'plugin',
+    route: 'official-qq',
+    installMethod: 'npm',
+    requires: ['手机 QQ（用于扫码授权）或 QQ 开放平台 AppID/AppSecret', '腾讯 QQ 开放平台上的机器人应用'],
+    conflicts: [
+      '同一个 QQ 号或群不要同时接入另一个 QQ 桥接插件（Aurabot、qq-bridge、dsh-qq-link 等），否则会重复回复。',
+    ],
+    attention: {
+      source: 'github',
+      stars: 530,
+      queriedAt: '2026-11-05',
+      url: 'https://github.com/tencent-connect/dsh-qqbot',
+    },
+    sizeNote: 'npm 解包约 0.8 MB；宿主依赖与 profile 变更另计。',
+    compatibilityNote: '上游未声明 0.2.1-rc.3 兼容；本项目隔离安装与启动生成绑定入口，真实 QQ 收发尚未验证。',
+    support: {
+      windowsX64: 'verified',
+      lockedDsh: 'unverified',
+      webProfile: 'verified',
+      note: 'Windows x64 + DSH 0.2.1-rc.3 + web profile 在隔离环境启动并生成绑定入口；QQ 真实收发尚未验证。',
+    },
+  },
   status: 'verified',
   author: 'Tencent Connect',
   homepage: 'https://github.com/tencent-connect/dsh-qqbot#readme',

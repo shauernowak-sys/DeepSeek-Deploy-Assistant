@@ -10,7 +10,7 @@ import {
   registryPlan,
   type PluginInstallDeps,
 } from '@dda/core';
-import type { CompatMatrix, PluginState } from '@dda/spec';
+import type { CompatMatrix, MarketInstallProgressEvent, PluginState } from '@dda/spec';
 
 const VERIFIED_MATRIX: CompatMatrix = loadMatrix({
   schemaVersion: 1,
@@ -374,13 +374,32 @@ describe('D03 验收⑤：成功路径与证据等级', () => {
     expect(outcome.connectivity).toBe('unverified');
   });
 
+  it('真实进度事件按步骤与实际来源发出，且不携带命令输出', async () => {
+    const events: MarketInstallProgressEvent[] = [];
+    await installCatalogPlugin(
+      request(VERIFIED_MATRIX, '0.2.0-rc.2'),
+      deps({ onProgress: (event) => events.push(event) }),
+    );
+
+    expect(events[0]?.phase).toBe('starting');
+    const stepIndexes = events
+      .filter((event) => event.phase === 'step')
+      .map((event) => event.step?.index);
+    expect(stepIndexes).toEqual(expect.arrayContaining([1, 2, 3, 4, 5, 6]));
+    expect(
+      events.some((event) => event.phase === 'source' && event.source?.label === '国内镜像 npmmirror'),
+    ).toBe(true);
+    expect(events.some((event) => event.phase === 'source' && event.source?.ok === true)).toBe(true);
+    expect(JSON.stringify(events)).not.toMatch(/stdout|stderr|token|secret/i);
+  });
+
   it('提供 dump-config / 配置自检 / 连通探测时逐项落到证据上', async () => {
     const outcome = await installCatalogPlugin(
       request(VERIFIED_MATRIX, '0.2.0-rc.2'),
       deps({
         dumpConfig: async () =>
           "- id: im-qqbot\n  name: '@tencent-connect/dsh-qqbot'\n  config:\n    appId: __FROM_ENV__\n",
-        checkConfig: async () => [],
+        checkConfig: async () => ({ configured: true, problems: [] }),
         probeConnectivity: async () => ({ verified: false, detail: '真实收发未验证' }),
       }),
     );
@@ -402,5 +421,30 @@ describe('D03 验收⑤：成功路径与证据等级', () => {
         }),
       ),
     ).rejects.toThrowError(/第 7 步（verify-load）失败/);
+  });
+
+  it('首次安装还没配置：第 8 步不判失败，但明确记录「尚未配置」', async () => {
+    const outcome = await installCatalogPlugin(
+      request(VERIFIED_MATRIX, '0.2.0-rc.2'),
+      deps({
+        dumpConfig: async () => "- id: im-qqbot\n  name: '@tencent-connect/dsh-qqbot'\n",
+        checkConfig: async () => ({ configured: false, problems: [] }),
+      }),
+    );
+    const config = outcome.steps.find((item) => item.id === 'config');
+    expect(config?.status).toBe('succeeded');
+    expect(config?.detail).toContain('尚未配置');
+  });
+
+  it('已经配置但字段不合法：第 8 步失败并带出原因', async () => {
+    await expect(
+      installCatalogPlugin(
+        request(VERIFIED_MATRIX, '0.2.0-rc.2'),
+        deps({
+          dumpConfig: async () => "- id: im-qqbot\n  name: '@tencent-connect/dsh-qqbot'\n",
+          checkConfig: async () => ({ configured: true, problems: ['缺少 access 配置'] }),
+        }),
+      ),
+    ).rejects.toThrowError(/第 8 步（config）失败：缺少 access 配置/);
   });
 });

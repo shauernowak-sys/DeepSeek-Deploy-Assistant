@@ -2,6 +2,26 @@ import { z } from 'zod';
 
 export const EmptySchema = z.object({}).strict();
 
+/** 资源中心仅接受明确确认的策展条目标识，禁止传入任意安装规格。 */
+export const MarketInstallSchema = z.object({
+  id: z.string().min(1).max(100),
+  confirmed: z.literal(true),
+}).strict();
+
+/**
+ * 「我的插件」只接受**已安装包名**；主进程会再对照 `plugin list` 的真实结果，
+ * 不接受渲染层传入任意 spec、路径或版本。
+ */
+export const PluginNameSchema = z.object({
+  name: z.string().min(1).max(214),
+}).strict();
+
+/** 卸载会改 profile，因此和 rollback 一样必须显式确认。 */
+export const PluginUninstallSchema = z.object({
+  name: z.string().min(1).max(214),
+  confirmed: z.literal(true),
+}).strict();
+
 export const EnvScanSchema = z.object({}).strict();
 
 /** 决策偏好来自用户在选择页的显式选择；主进程会再次校验。 */

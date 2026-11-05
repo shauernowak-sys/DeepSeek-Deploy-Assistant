@@ -6,6 +6,17 @@ import { contextBridge, ipcRenderer } from 'electron';
  */
 const api = {
   bootstrap: () => ipcRenderer.invoke('app:bootstrap'),
+  marketList: () => ipcRenderer.invoke('market:list'),
+  marketInstall: (id: string, confirmed: boolean) => ipcRenderer.invoke('market:install', { id, confirmed }),
+  onMarketInstallProgress: (handler: (event: unknown) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, payload: unknown) => handler(payload);
+    ipcRenderer.on('market:install-progress', listener);
+    return () => ipcRenderer.removeListener('market:install-progress', listener);
+  },
+  pluginsList: () => ipcRenderer.invoke('plugins:list'),
+  pluginOpenSettings: (name: string) => ipcRenderer.invoke('plugins:open-settings', { name }),
+  pluginUninstall: (name: string, confirmed: boolean) =>
+    ipcRenderer.invoke('plugins:uninstall', { name, confirmed }),
   inspectEnv: (preferences?: unknown) =>
     ipcRenderer.invoke('env:inspect', preferences ? { preferences } : {}),
   decideEnv: (preferences?: unknown) =>
@@ -45,13 +56,11 @@ const api = {
   qqOpenBind: () => ipcRenderer.invoke('qq:open-bind', {}),
   // ---- 个人 QQ（SnowLuma 路线）----
   personalStatus: () => ipcRenderer.invoke('personal:status'),
-  personalSettings: () => ipcRenderer.invoke('personal:settings'),
   personalGuide: () => ipcRenderer.invoke('personal:guide'),
   personalInstallAdapter: () => ipcRenderer.invoke('personal:install-adapter', {}),
   personalPushBridge: () => ipcRenderer.invoke('personal:push-bridge', {}),
   personalBindPrivate: (sessionId: string, uin: string) =>
     ipcRenderer.invoke('personal:bind-private', { sessionId, uin }),
-  personalVerifyMessage: (verified: boolean) => ipcRenderer.invoke('personal:verify-message', { verified }),
   personalOpen: (target: 'project' | 'releases' | 'license' | 'eula' | 'webui') =>
     ipcRenderer.invoke('personal:open', { target }),
   personalPickInstallDir: () => ipcRenderer.invoke('personal:pick-install-dir', {}),

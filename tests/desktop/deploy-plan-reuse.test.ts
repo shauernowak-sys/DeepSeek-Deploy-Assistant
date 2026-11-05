@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -60,6 +60,21 @@ const systemRuntime = (harnessBin: string): RuntimeSelection => ({
 });
 
 describe('部署计划：复用已有运行时', () => {
+  it('准备已有 profile 前先备份配置，即使初始化修改了原文件也可恢复', async () => {
+    let profileDir = '';
+    const cli = fakeCli();
+    cli.ensureProfile = async () => { await writeFile(join(profileDir, 'cordis.patch.yml'), 'changed'); };
+    const { paths, steps } = await fixture(undefined, cli);
+    profileDir = join(paths.dshHome, 'profiles', 'web');
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(join(profileDir, 'package.json'), '{"name":"existing"}');
+    await writeFile(join(profileDir, 'cordis.patch.yml'), '# original\n');
+    await steps.find((step) => step.id === 'ensure-profile')!.run(ctx());
+    const backups = await readdir(paths.stateBackups);
+    expect(backups).toHaveLength(1);
+    expect(await readFile(join(paths.stateBackups, backups[0]!, 'cordis.patch.yml'), 'utf8')).toBe('# original\n');
+    expect(await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')).toBe('changed');
+  });
   it('个人 QQ 不安装官方机器人插件，官方路线保留插件步骤', async () => {
     const personal = await fixture(undefined, fakeCli(), 'personal');
     const official = await fixture(undefined, fakeCli(), 'official');

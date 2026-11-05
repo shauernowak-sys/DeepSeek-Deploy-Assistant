@@ -5,7 +5,6 @@ import { SetupIllustration } from './SetupIllustration';
 import type {
   InstallVerification,
   PersonalQqGuide,
-  PersonalQqSettings,
   PersonalQqStatus,
   SnowLumaConfigInspection,
   SnowLumaDeploySnapshot,
@@ -17,12 +16,11 @@ import type {
 /**
  * 个人 QQ（SnowLuma）部署向导。
  *
- * 五步与 `@dda/spec` 的部署步骤一一对应：
- *  1 环境检查 → precheck
- *  2 用户自行下载、安装 SnowLuma
+ * 四步引导用户自行安装 SnowLuma 并连接 Harness：
+ *  1 用户自行下载、安装 SnowLuma
+ *  2 环境检查 → precheck
  *  3 QQ 登录  → 用户扫码（人工）
  *  4 Harness 连接 → link
- *  5 连接验收 → verify（必须由用户确认真实收到回复）
  *
  * 界面只读主进程产出的快照，不执行任何下载/安装逻辑；
  * OneBot 令牌从不进入渲染层，WebUI 初始口令只在用户点击后展示。
@@ -37,11 +35,9 @@ interface ActionResult {
 interface DdaApi {
   personalStatus(): Promise<PersonalQqStatus>;
   personalGuide(): Promise<PersonalQqGuide>;
-  personalSettings(): Promise<PersonalQqSettings>;
   personalInstallAdapter(): Promise<ActionResult>;
   personalPushBridge(): Promise<ActionResult>;
   personalBindPrivate(sessionId: string, uin: string): Promise<ActionResult>;
-  personalVerifyMessage(verified: boolean): Promise<{ ok: boolean }>;
   personalOpen(target: 'project' | 'releases' | 'license' | 'eula' | 'webui'): Promise<{ ok: boolean }>;
   personalPickInstallDir(): Promise<{ ok: boolean; installDir?: string }>;
   deployStatus(): Promise<SnowLumaDeploySnapshot>;
@@ -90,11 +86,10 @@ const STEP_STATUS_LABEL: Record<SnowLumaStepStatus, { text: string; cls: string 
 };
 
 const WIZARD = [
-  { key: 'env', title: '1. 环境检查', steps: ['precheck'] as string[] },
-  { key: 'install', title: '2. 下载与安装 SnowLuma', steps: [] as string[] },
+  { key: 'install', title: '1. 安装 SnowLuma', steps: [] as string[] },
+  { key: 'env', title: '2. 环境检测', steps: ['precheck'] as string[] },
   { key: 'login', title: '3. QQ 登录', steps: [] as string[] },
   { key: 'link', title: '4. 连接 Harness', steps: ['link'] as string[] },
-  { key: 'verify', title: '5. 消息测试', steps: ['verify'] as string[] },
 ];
 
 function Flag({ ok, yes = '是', no = '否' }: { ok: boolean; yes?: string; no?: string }): JSX.Element {
@@ -112,7 +107,6 @@ function bytes(value?: number): string {
 export function PersonalQqPanel(): JSX.Element {
   const [status, setStatus] = useState<PersonalQqStatus>();
   const [guide, setGuide] = useState<PersonalQqGuide>();
-  const [settings, setSettings] = useState<PersonalQqSettings>();
   const [snapshot, setSnapshot] = useState<SnowLumaDeploySnapshot>();
   const [processInfo, setProcessInfo] = useState<SnowLumaProcessStatus>();
   const [discovery, setDiscovery] = useState<SnowLumaInstallDiscovery>();
@@ -123,7 +117,7 @@ export function PersonalQqPanel(): JSX.Element {
   const [credentials, setCredentials] = useState<{ user: string; password: string }>();
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState<string>();
-  const [tab, setTab] = useState<string>('env');
+  const [tab, setTab] = useState<string>('install');
   const [sessionId, setSessionId] = useState('');
   const [uin, setUin] = useState('');
   const [uninstall, setUninstall] = useState({
@@ -135,17 +129,15 @@ export function PersonalQqPanel(): JSX.Element {
   });
 
   const refresh = useCallback(async () => {
-    const [next, g, s, deploy, proc, disc] = await Promise.all([
+    const [next, g, deploy, proc, disc] = await Promise.all([
       api.personalStatus(),
       api.personalGuide(),
-      api.personalSettings(),
       api.deployStatus(),
       api.deployProcess(),
       api.installDiscovery(),
     ]);
     setStatus(next);
     setGuide(g);
-    setSettings(s);
     setSnapshot(deploy);
     setProcessInfo(proc);
     setDiscovery(disc);
@@ -186,7 +178,7 @@ export function PersonalQqPanel(): JSX.Element {
   }, [load]);
 
   useEffect(() => {
-    if (tab !== 'login' && tab !== 'verify') return;
+    if (tab !== 'login' && tab !== 'link') return;
     let cancelled = false;
     const timer = setInterval(() => {
       void api
@@ -232,7 +224,7 @@ export function PersonalQqPanel(): JSX.Element {
   const wizardState = useMemo(() => {
     return WIZARD.map((item) => {
       if (item.key === 'login') {
-        const state: SnowLumaStepStatus = status?.service.onebotResponsive
+        const state: SnowLumaStepStatus = status?.service.onebotResponsive && status.service.loginUin
           ? 'done'
           : status?.service.webuiReachable
             ? 'waiting'
@@ -240,7 +232,7 @@ export function PersonalQqPanel(): JSX.Element {
         return { ...item, status: state };
       }
       if (item.key === 'install') {
-        // 第二步以"用户是否已装好"为准：装好且校验通过才算 done；装了但校验不过停在 waiting。
+        // 安装状态以实际目录校验为准。
         const state: SnowLumaStepStatus = !verification?.exists
           ? 'idle'
           : verification.valid
@@ -321,7 +313,7 @@ export function PersonalQqPanel(): JSX.Element {
 
       {tab === 'env' && (
         <div className="card">
-          <h3>第一步：环境检查</h3>
+          <h3>第二步：环境检测</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 6 }}>
             <span className="muted">操作系统</span>
             <span>Windows（本产品只支持 Windows x64）</span>
@@ -364,8 +356,7 @@ export function PersonalQqPanel(): JSX.Element {
           </div>
           {!gateway?.allowed && (
             <div className="muted" style={{ marginTop: 10 }}>
-              下一件事：去第二步，从官方 Releases 下载并解压 SnowLuma（我们不代下载/安装），回来点「我已完成安装」，
-              我们会只读校验目录、读取 OneBot 端点、配置 Harness 适配层并做真实连通检测。
+              如果尚未安装 SnowLuma，请返回第一步完成下载和解压。
             </div>
           )}
         </div>
@@ -373,17 +364,18 @@ export function PersonalQqPanel(): JSX.Element {
 
       {tab === 'install' && (
         <div className="card">
-          <h3>第二步：下载与安装 SnowLuma</h3>
-          <p>请跟着下面的四步操作。下载和安装由你自己完成。</p>
+          <h3>第一步：下载与安装 SnowLuma</h3>
+          <p>请自行下载、解压并启动 SnowLuma，再进行环境检测。</p>
           <p className="illustration-note">以下为操作示意图，实际页面可能略有不同。</p>
           <div className="visual-guide">
-            <article className="visual-guide-step"><SetupIllustration scene="download" /><div><span className="guide-number">1</span><h4>打开官方下载页面</h4><p>点击下方按钮，在打开的页面找到 Windows x64 的完整版压缩包并下载。</p><p className="guide-file">选择文件：<strong>{guide?.asset.fileName ?? '正在读取推荐文件名…'}</strong></p><p className="guide-tip">不要选择名称带 <b>lite</b> 的文件。</p><button className="primary" onClick={() => open('releases')} disabled={Boolean(busy)}>打开官方下载页面 ↗</button></div></article>
-            <article className="visual-guide-step"><SetupIllustration scene="extract" /><div><span className="guide-number">2</span><h4>解压下载的文件</h4><p>打开电脑的“下载”文件夹，找到刚才下载的压缩包，点击鼠标右键，选择<b>“全部解压”</b>，再按窗口提示完成解压。</p><p className="guide-tip">请记住解压后的文件夹位置，不要解压到 QQ 或 Windows 系统目录。</p></div></article>
-            <article className="visual-guide-step"><SetupIllustration scene="launch" /><div><span className="guide-number">3</span><h4>打开解压后的文件夹</h4><p>在文件夹中找到 <b>launcher.bat</b>，用鼠标双击它（如果电脑隐藏了文件扩展名，可能只显示 launcher）。首次启动时，请记下窗口中显示的初始登录口令。</p><p className="guide-tip">启动后请保持打开的窗口运行，不要关闭。</p></div></article>
-            <article className="visual-guide-step"><SetupIllustration scene="check" /><div><span className="guide-number">4</span><h4>回到这里检查</h4><p>完成前面的操作后，点击下方按钮。本软件会检查安装位置；若未找到，可以手动选择刚才解压的文件夹。</p><div className="row"><button className="primary" onClick={() => void recheckInstall()} disabled={Boolean(busy)}>{busy === 'install-recheck' ? '正在检测…' : '我已完成安装，开始检测'}</button><button onClick={() => void pickInstallDir()} disabled={Boolean(busy)}>手动选择文件夹</button></div></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="download" /><div><span className="guide-number">1</span><h4>下载完整版</h4><p>打开官方下载页，选择不带 lite 的 Windows 压缩包。</p><p className="guide-file">{guide?.asset.fileName ?? '正在读取文件名…'}</p><button onClick={() => open('releases')} disabled={Boolean(busy)}>打开下载页 ↗</button></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="extract" /><div><span className="guide-number">2</span><h4>解压文件</h4><p>在“下载”文件夹中右键压缩包，选择<b>“全部解压”</b>。</p></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="launch" /><div><span className="guide-number">3</span><h4>启动程序</h4><p>打开解压后的文件夹，双击 <b>launcher.bat</b>，记下窗口里的初始口令并保持窗口打开。</p></div></article>
+            <article className="visual-guide-step"><SetupIllustration scene="check" /><div><span className="guide-number">4</span><h4>选择安装目录</h4><p>回到这里选择刚才解压的文件夹，然后进入下一步。</p><div className="row"><button onClick={() => void recheckInstall()} disabled={Boolean(busy)}>{busy === 'install-recheck' ? '正在查找…' : '自动查找'}</button><button onClick={() => void pickInstallDir()} disabled={Boolean(busy)}>选择文件夹</button></div></div></article>
           </div>
           <details className="advanced-settings"><summary>下载信息与校验详情</summary><p>推荐版本：v{guide?.version ?? '2.4.0'}；文件：<code>{guide?.asset.fileName ?? '读取中'}</code>{guide?.asset ? `（${bytes(guide.asset.sizeBytes)}）` : ''}</p><p>SHA-256：<code className="hash">{guide?.asset.sha256 ?? '读取中'}</code></p><p className="muted">校验值由本项目锁定并与 GitHub API 的 digest 核对。协议需由你本人阅读和接受。</p><div className="row"><button onClick={() => open('eula')}>查看 EULA</button><button onClick={() => open('license')}>查看 LICENSE</button><button onClick={() => void api.personalOpenInstallDir()}>打开安装目录</button></div></details>
 
+          <details className="personal-install-details"><summary>查看安装检测结果与常见问题</summary>
           <h4>安装检测结果（只读）</h4>
           {!verification && <div className="empty">尚未检测。</div>}
           {verification && (
@@ -507,8 +499,7 @@ export function PersonalQqPanel(): JSX.Element {
               </li>
             </ul>
           </details>
-
-
+          </details>
         </div>
       )}
 
@@ -517,7 +508,7 @@ export function PersonalQqPanel(): JSX.Element {
           <h3>第三步：QQ 登录</h3>
           <p>先完成安装，再按下面的顺序登录。以下为示意图，实际页面可能不同。</p>
           <div className="login-guide"><SetupIllustration scene="login" /><div><ol><li>确认电脑上的 QQ 已经打开，并保持 SnowLuma 的启动窗口运行。</li><li>点击“打开 SnowLuma 登录页面”，输入首次启动时记下的口令。</li><li>阅读页面上的协议并由你本人决定是否接受，然后使用手机 QQ 扫码。</li><li>回到这里，点击“重新检测”，查看登录状态。</li></ol></div></div>
-          <p>当前状态：<Flag ok={Boolean(status?.service.onebotResponsive)} yes="检测到已登录" no="尚未检测到登录" /></p>
+          <p>当前状态：<Flag ok={Boolean(status?.service.onebotResponsive && status.service.loginUin)} yes="检测到已登录" no="尚未检测到登录" /></p>
           <div className="row">
             <button onClick={() => open('webui')} disabled={Boolean(busy)}>
               打开 SnowLuma 登录页面
@@ -560,6 +551,7 @@ export function PersonalQqPanel(): JSX.Element {
       {tab === 'link' && (
         <div className="card">
           <h3>第四步：连接 Harness</h3>
+          <p className="muted">连接状态仅表示服务检测结果，不能证明 QQ 消息已收发。</p>
           <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 6 }}>
             <span className="muted">适配插件</span>
             <span>
@@ -621,73 +613,6 @@ export function PersonalQqPanel(): JSX.Element {
             </button>
           </div>
           {stepOf('link')?.error && <div className="error">{stepOf('link')!.error}</div>}
-        </div>
-      )}
-
-      {tab === 'verify' && (
-        <div className="card">
-          <h3>第五步：消息测试</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 6 }}>
-            <span className="muted">QQ 账号识别</span>
-            <span>
-              <Flag ok={Boolean(status?.service.onebotResponsive)} yes={status?.service.loginUin ?? ''} no="未识别" />
-            </span>
-            <span className="muted">适配层后端</span>
-            <span>
-              <Flag ok={Boolean(status?.bridge?.backendOk)} yes="可用" no="不可用" />
-            </span>
-            <span className="muted">用户确认</span>
-            <span>{settings?.messageVerifiedAt ? `已于 ${settings.messageVerifiedAt} 确认真实收到回复` : '尚未确认'}</span>
-            <span className="muted">验收结论</span>
-            <span>
-              {stepOf('verify')?.status === 'done'
-                ? '双向消息链路已验证'
-                : stepOf('verify')?.status === 'waiting'
-                  ? '自动检查已通过，等待你确认真实收发'
-                  : stepOf('verify')?.detail ?? '尚未执行'}
-            </span>
-          </div>
-          {stepOf('verify')?.error && <div className="error">{stepOf('verify')!.error}</div>}
-          <ol className="muted" style={{ marginTop: 10 }}>
-            <li>用手机 QQ 给上面识别出的账号发一条私聊消息。</li>
-            <li>Harness 里的模型会处理并回复；你应当在 QQ 里收到回复。</li>
-            <li>确认收到后点下面的按钮 —— 这一步不会自动判定成功。</li>
-          </ol>
-          <div className="row">
-            <button
-              onClick={() =>
-                void run(
-                  'verify',
-                  async () => {
-                    await api.personalVerifyMessage(true);
-                    return api.deployStep('verify');
-                  },
-                  '已记录你的确认',
-                )
-              }
-              disabled={Boolean(busy)}
-            >
-              我已收到回复
-            </button>
-            <button onClick={() => void run('verify-recheck', () => api.deployStep('verify'))} disabled={Boolean(busy)}>
-              重新执行自动检查
-            </button>
-            <button
-              onClick={() =>
-                void run(
-                  'verify-clear',
-                  async () => {
-                    await api.personalVerifyMessage(false);
-                    return { ok: true } as ActionResult;
-                  },
-                  '已撤销确认',
-                )
-              }
-              disabled={Boolean(busy)}
-            >
-              撤销确认
-            </button>
-          </div>
         </div>
       )}
 

@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 
 import {
   DiagExportSchema,
+  MarketInstallSchema,
   EnvInspectSchema,
   HarnessLaunchSchema,
   ApiEmptySchema,
@@ -15,7 +16,8 @@ import {
   QqStatusQuerySchema,
   PersonalQqBindSchema,
   PersonalQqOpenSchema,
-  PersonalQqVerifyMessageSchema,
+  PluginNameSchema,
+  PluginUninstallSchema,
   ProfileRestoreSchema,
   SnowLumaEmptySchema,
   SnowLumaRestoreConfigSchema,
@@ -31,6 +33,7 @@ import {
   BASELINE,
   QQ_GATE_01,
   QQ_GATE_02,
+  type MarketInstallProgressEvent,
 } from '@dda/spec';
 import { DEEPSEEK_MODELS, DEEPSEEK_TEMPLATE } from '@dda/core';
 import type { TaskEvent } from '@dda/spec';
@@ -46,6 +49,9 @@ import type { PersonalQqService } from '../services/personal-qq-service';
 import type { SnowLumaDeploymentService } from '../services/snowluma-deployment-service';
 import type { ProfileRecoveryService } from '../services/profile-recovery-service';
 import { Secrets } from '../security/secrets';
+import { findInstallableMarketEntry, loadMarketCatalog } from '../services/market-catalog';
+import type { PluginInventoryService } from '../services/plugin-inventory-service';
+import { join } from 'node:path';
 
 /**
  * 门禁状态的唯一事实源在 `@dda/spec`（gates.ts）。这里只做转发，避免再出现
@@ -65,10 +71,67 @@ export interface IpcContext {
   personal: PersonalQqService;
   deployment: SnowLumaDeploymentService;
   recovery: ProfileRecoveryService;
+  plugins: PluginInventoryService;
   broadcast: (event: TaskEvent) => void;
 }
 
 export function registerIpc(ctx: IpcContext): void {
+  const marketDir = () => app.isPackaged
+    ? join(process.resourcesPath, 'market')
+    : join(app.getAppPath(), 'apps', 'desktop', 'resources', 'market');
+  ipcMain.handle('market:list', async () => {
+    try {
+      return { ok: true as const, ...await loadMarketCatalog(marketDir()) };
+    } catch {
+      return { ok: false as const, message: '资源清单读取或校验失败。请重试；如果问题持续，请打开故障诊断。' };
+    }
+  });
+  ipcMain.handle('market:install', async (_event, raw: unknown) => {
+    const { id } = MarketInstallSchema.parse(raw);
+    const catalog = await loadMarketCatalog(marketDir());
+    const entry = findInstallableMarketEntry(catalog.entries, id);
+    // 目前唯一受支持的策展安装入口；不能把任意名称或候选传给安装器。
+    if (!entry) {
+      return { ok: false, message: '该插件尚未通过安装审核，不能安装。' };
+    }
+    const send = (payload: MarketInstallProgressEvent) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send('market:install-progress', payload);
+      }
+    };
+    send({ phase: 'starting', message: `开始安装 ${entry.zh.name} ${entry.version}` });
+    const result = await ctx.qq.repairPlugin(send);
+    send({
+      phase: result.ok ? 'done' : 'failed',
+      message: result.message,
+    });
+    return result;
+  });
+  // ---- 我的插件：真实安装列表、真实设置入口、带备份的卸载 ----
+  ipcMain.handle('plugins:list', async () => {
+    try {
+      return { ok: true as const, ...await ctx.plugins.snapshot() };
+    } catch (error) {
+      return {
+        ok: false as const,
+        message: `读取已安装插件失败：${error instanceof Error ? error.message : String(error)}。请稍后重试或打开故障诊断。`,
+      };
+    }
+  });
+
+  ipcMain.handle('plugins:open-settings', async (_event, raw: unknown) => {
+    const { name } = PluginNameSchema.parse(raw);
+    const result = await ctx.plugins.openSettings(name);
+    // URL 只可能来自我们自己启动的 Harness，不接受渲染层传入任意地址。
+    if (result.ok && result.url !== undefined) await shell.openExternal(result.url);
+    return result;
+  });
+
+  ipcMain.handle('plugins:uninstall', async (_event, raw: unknown) => {
+    const { name, confirmed } = PluginUninstallSchema.parse(raw);
+    return ctx.plugins.uninstall(name, confirmed);
+  });
+
   ipcMain.handle('app:bootstrap', async () => ({
     appVersion: app.getVersion(),
     baseline: BASELINE,
@@ -157,7 +220,6 @@ export function registerIpc(ctx: IpcContext): void {
   // ---- 个人 QQ（SnowLuma 路线）----
   // 只做检测、引导、适配插件与配置；不下载/安装/启动 SnowLuma（产品决策 + 许可约束）。
   ipcMain.handle('personal:status', async () => ctx.personal.status());
-  ipcMain.handle('personal:settings', async () => ctx.personal.settings());
   ipcMain.handle('personal:guide', async () => ctx.personal.guide());
 
   ipcMain.handle('personal:install-adapter', async () => ctx.personal.installAdapter());
@@ -166,12 +228,6 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle('personal:bind-private', async (_event, raw: unknown) => {
     const payload = PersonalQqBindSchema.parse(raw);
     return ctx.personal.bindPrivateSession(payload);
-  });
-
-  ipcMain.handle('personal:verify-message', async (_event, raw: unknown) => {
-    const payload = PersonalQqVerifyMessageSchema.parse(raw);
-    const saved = await ctx.personal.markMessageVerified(payload.verified);
-    return { ok: true, settings: saved };
   });
 
   ipcMain.handle('personal:open', async (_event, raw: unknown) => {

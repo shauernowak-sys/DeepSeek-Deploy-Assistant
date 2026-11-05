@@ -49,9 +49,12 @@ export const MARKET_FIELD_OWNERSHIP = {
 /** 索引声明过的分类 id；条目只能引用这里出现过的 id（官方校验器会强校验）。 */
 export const MARKET_CATEGORIES: Readonly<Record<string, { en: string; zh: string }>> = {
   'qq-bot': { en: 'QQ integrations', zh: 'QQ 接入' },
-  companion: { en: 'Companion & interaction', zh: '陪伴互动' },
+  companion: { en: 'Personas & companions', zh: '人设与陪伴' },
+  memory: { en: 'Memory', zh: '记忆' },
+  voice: { en: 'Voice', zh: '语音' },
+  'images-memes': { en: 'Images & memes', zh: '图片与表情包' },
+  'proactive-social': { en: 'Proactive messages & QZone', zh: '主动消息与 QQ 空间' },
   'ui-widget': { en: 'Interface widgets', zh: '界面小组件' },
-  memory: { en: 'Memory', zh: '记忆增强' },
   'dev-tools': { en: 'Developer tools', zh: '开发工具' },
   market: { en: 'Plugin market', zh: '插件市场' },
 };
@@ -60,6 +63,14 @@ export const MARKET_LABELS: Readonly<Record<string, { en: string; zh: string }>>
   official: { en: 'Official', zh: '官方' },
   community: { en: 'Community', zh: '社区' },
   'not-verified': { en: 'Not verified', zh: '未验证' },
+  bridge: { en: 'Bridge program', zh: '桥接程序' },
+  persona: { en: 'Persona', zh: '人设' },
+  memory: { en: 'Memory', zh: '记忆' },
+  voice: { en: 'Voice', zh: '语音' },
+  meme: { en: 'Memes', zh: '表情包' },
+  qzone: { en: 'QZone', zh: 'QQ 空间' },
+  proactive: { en: 'Proactive messages', zh: '主动消息' },
+  'needs-snowluma': { en: 'Requires SnowLuma', zh: '需要 SnowLuma' },
 };
 
 export const MARKET_SORT_KEYS: Readonly<Record<string, { en: string; zh: string; order: 'asc' | 'desc' }>> = {
@@ -215,6 +226,7 @@ export function buildOverlay(
       keywords: entry.keywords,
       safety: entry.safety,
       installNotes: entry.installNotes,
+      ...(entry.market === undefined ? {} : { market: entry.market }),
       status: entry.status,
     };
   });
@@ -226,13 +238,14 @@ export function buildOverlay(
     version: candidate.version,
     status: candidate.status,
     license: candidate.license,
-    integrity: candidate.integrity,
+    ...(candidate.integrity === undefined ? {} : { integrity: candidate.integrity }),
     depsClosure: candidate.depsClosure,
     zh: candidate.zh,
     category: candidate.category,
     labels: candidate.labels,
     keywords: candidate.keywords,
     installNotes: candidate.installNotes,
+    market: candidate.market,
     review: candidate.review,
   }));
 

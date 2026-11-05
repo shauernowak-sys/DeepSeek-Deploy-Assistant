@@ -61,6 +61,8 @@ export interface RegistryInstallOptions {
   spec: string;
   plan?: RegistryLayer[];
   install: (registry: RegistryLayer) => Promise<void>;
+  /** 每次源尝试的开始/结束（不含命令输出，供界面显示当前来源与进度）。 */
+  onAttempt?: (event: { layer: RegistryLayer; index: number; total: number; ok?: boolean; durationMs?: number }) => void;
   log?: (line: string) => void;
 }
 
@@ -91,17 +93,20 @@ export async function installWithRegistryFallback(options: RegistryInstallOption
   for (const [index, layer] of plan.entries()) {
     const startedAt = Date.now();
     options.log?.(`从${layer.label}安装 ${options.spec}（${index + 1}/${plan.length}）`);
+    options.onAttempt?.({ layer, index: index + 1, total: plan.length });
     try {
       await options.install(layer);
       const durationMs = Date.now() - startedAt;
       history.push({ registry: layer.id, url: layer.url, ok: true, durationMs });
       options.log?.(`已从${layer.label}安装 ${options.spec}（${durationMs} ms）`);
+      options.onAttempt?.({ layer, index: index + 1, total: plan.length, ok: true, durationMs });
       return { registry: layer, attempts: index + 1, history };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - startedAt;
       history.push({ registry: layer.id, url: layer.url, ok: false, durationMs, error: message });
       failures.push(`${layer.label}（${layer.url}）：${message}`);
+      options.onAttempt?.({ layer, index: index + 1, total: plan.length, ok: false, durationMs });
       if (!isRegistryRetryable(message)) {
         throw new DdaError(
           error instanceof DdaError ? error.code : ERROR_CODES.E_PROCESS_FAILED,

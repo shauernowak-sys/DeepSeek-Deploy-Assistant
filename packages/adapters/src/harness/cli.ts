@@ -44,8 +44,8 @@ export interface DshCli {
   listPlugins(profile: string): Promise<PluginState[]>;
   /** 组合树转储：用于「已加载」复核（步骤 7）。 */
   dumpConfig(profile: string): Promise<string>;
-  addPlugin(profile: string, spec: string, options?: { registry?: string }): Promise<RunResult>;
-  removePlugin(profile: string, name: string): Promise<void>;
+  addPlugin(profile: string, spec: string, options?: { registry?: string; storeDir?: string }): Promise<RunResult>;
+  removePlugin(profile: string, name: string, options?: { storeDir?: string }): Promise<void>;
   launchWeb(
     profile: string,
     port: number,
@@ -95,14 +95,18 @@ export function createDshCli(options: DshEnvOptions): DshCli {
       }
       // `--registry=` 会被 dsh 用于预检查询，并原样转发给 pnpm（实测 0.2.0-rc.2）。
       const registryArgs = options?.registry === undefined ? [] : [`--registry=${options.registry}`];
-      return run(['plugin', '--profile', profile, 'add', spec, ...registryArgs], 30 * 60_000);
+      // profile 的 node_modules 是从某个具体 store 链接来的；换了 store 再装/删会被
+      // pnpm 以 ERR_PNPM_UNEXPECTED_STORE 拒绝，所以沿用 profile 记录的那个（见 .modules.yaml）。
+      const storeArgs = options?.storeDir === undefined ? [] : [`--store-dir=${options.storeDir}`];
+      return run(['plugin', '--profile', profile, 'add', spec, ...registryArgs, ...storeArgs], 30 * 60_000);
     },
 
-    async removePlugin(profile, name) {
+    async removePlugin(profile, name, options) {
       if (profile === 'desktop') {
         throw new DdaError(ERROR_CODES.E_PROFILE_OWNED_BY_DESKTOP, 'desktop profile 由官方桌面端独占', '本工具不会修改它');
       }
-      await run(['plugin', '--profile', profile, 'remove', name], 10 * 60_000);
+      const storeArgs = options?.storeDir === undefined ? [] : [`--store-dir=${options.storeDir}`];
+      await run(['plugin', '--profile', profile, 'remove', name, ...storeArgs], 10 * 60_000);
     },
 
     async launchWeb(profile, port, timeoutMs = WEB_START_TIMEOUT_MS, extraEnv, onOutput) {

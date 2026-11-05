@@ -7,6 +7,8 @@ export * from './diagnostics/report';
 export * from './compat/matrix';
 export * from './market/distribution';
 export * from './market/curation';
+export * from './market/plugin-adapters';
+export * from './market/plugin-inventory';
 export * from './market/registries';
 export * from './market/registry-config';
 export * from './market/license-gate';

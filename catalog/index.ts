@@ -10,6 +10,8 @@ import { OFFICIAL_QQBOT_ENTRY } from './entries/official-qqbot';
  *
  * `CATALOG.entries` 只放**可安装**条目（进 index.json）；
  * `CATALOG_CANDIDATES` 是评估过但不可安装的候选（只进 overlay，见 D09 完整策展）。
+ * 候选里既有做过闭包/安装探测的 npm 包，也有 2026-11-05 生态调研新增的 GitHub 项目；
+ * 后者以 `market.kind` 区分插件、桥接程序、工具与参考资料，且必须显式标注未审计。
  */
 export const CATALOG: Catalog = CatalogSchema.parse({
   schemaVersion: 1,

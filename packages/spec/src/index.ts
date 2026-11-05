@@ -4,6 +4,7 @@ export * from './errors';
 export * from './licensing';
 export * from './market';
 export * from './manifest';
+export * from './plugin-inventory';
 export * from './ipc';
 export * from './qq';
 export * from './qq-personal';

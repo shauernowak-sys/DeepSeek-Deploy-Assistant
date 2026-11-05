@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { QQ_PLUGIN_DISTRIBUTION } from '@dda/spec';
+import { QQ_PLUGIN_DISTRIBUTION, type MarketInstallProgressEvent, type PluginInventorySnapshot } from '@dda/spec';
 
 import { PersonalQqPanel } from './components/PersonalQqPanel';
+import { MarketCenter, type MarketData } from './components/MarketCenter';
 
 interface StepState {
   id: string;
@@ -348,6 +349,25 @@ const QQ_PHASE_LABEL: Record<QqPhaseView, { text: string; cls: string }> = {
 
 type Api = {
   bootstrap: () => Promise<Bootstrap>;
+  marketList: () => Promise<({ ok: true } & MarketData) | { ok: false; message: string }>;
+  marketInstall: (id: string, confirmed: boolean) => Promise<{ ok: boolean; message: string }>;
+  onMarketInstallProgress: (handler: (event: unknown) => void) => () => void;
+  pluginsList: () => Promise<({ ok: true } & PluginInventorySnapshot) | { ok: false; message: string }>;
+  pluginOpenSettings: (name: string) => Promise<{
+    ok: boolean;
+    message: string;
+    url?: string;
+    panelLabel?: string;
+    appPage?: 'personal-qq';
+    guideId?: string;
+  }>;
+  pluginUninstall: (name: string, confirmed: boolean) => Promise<{
+    ok: boolean;
+    message: string;
+    backupDir?: string;
+    restarted: boolean;
+    plugins?: PluginInventorySnapshot['plugins'];
+  }>;
   inspectEnv: (preferences?: Record<string, unknown>) => Promise<InspectionView>;
   decideEnv: (preferences?: Record<string, unknown>) => Promise<DecisionView>;
   startDeploy: (input: { planId: string; confirmed: boolean; fresh?: boolean; qqMode?: 'official' | 'personal' }) => Promise<{ taskId: string }>;
@@ -501,7 +521,17 @@ function readableError(e: unknown): string {
 
 export function App(): JSX.Element {
   const api = window.dda;
-  const [page, setPage] = useState<'home' | 'environment' | 'deploy' | 'model' | 'qq' | 'status' | 'diagnostics' | 'finish'>('home');
+  const [page, setPage] = useState<'home' | 'environment' | 'deploy' | 'model' | 'qq' | 'status' | 'diagnostics' | 'finish' | 'market'>('home');
+  const [marketData, setMarketData] = useState<MarketData>();
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketError, setMarketError] = useState<string>();
+  const [marketQqStatus, setMarketQqStatus] = useState<QqStatusView>();
+  const [marketProgress, setMarketProgress] = useState<MarketInstallProgressEvent>();
+  const [mine, setMine] = useState<PluginInventorySnapshot>();
+  const [mineLoading, setMineLoading] = useState(false);
+  const [mineError, setMineError] = useState<string>();
+  const [mineBusy, setMineBusy] = useState<string>();
+  const [mineNotice, setMineNotice] = useState<{ ok: boolean; message: string }>();
   const [boot, setBoot] = useState<Bootstrap>();
   const [env, setEnv] = useState<EnvReport>();
   const [decision, setDecision] = useState<DecisionView>();
@@ -596,6 +626,80 @@ export function App(): JSX.Element {
     setQqTab(mode);
     setPage('environment');
   };
+
+  const loadMarket = useCallback(async () => {
+    setMarketLoading(true);
+    setMarketError(undefined);
+    setMarketData(undefined);
+    setMarketQqStatus(undefined);
+    try {
+      const result = await api.marketList();
+      if (!result.ok) { setMarketError(result.message); return; }
+      setMarketData(result);
+      try { setMarketQqStatus(await api.qqStatus(true)); } catch { /* 未取得证据，保持未验证 */ }
+    } catch {
+      setMarketError('资源清单读取失败。请重试；如果问题持续，请打开故障诊断。');
+    } finally { setMarketLoading(false); }
+  }, [api]);
+
+  useEffect(() => { if (page === 'market') void loadMarket(); }, [page, loadMarket]);
+
+  const loadMine = useCallback(async () => {
+    setMineLoading(true);
+    setMineError(undefined);
+    try {
+      const result = await api.pluginsList();
+      if (!result.ok) { setMine(undefined); setMineError(result.message); return; }
+      setMine(result);
+    } catch (error) {
+      setMine(undefined);
+      setMineError(readableError(error));
+    } finally {
+      setMineLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => { if (page === 'market') void loadMine(); }, [page, loadMine]);
+
+  const openPluginSettings = useCallback(async (name: string) => {
+    setMineBusy(name);
+    setMineNotice(undefined);
+    try {
+      const result = await api.pluginOpenSettings(name);
+      if (result.appPage === 'personal-qq') {
+        setQqTab('personal');
+        setPage('qq');
+        return;
+      }
+      setMineNotice({ ok: result.ok, message: result.message });
+    } catch (error) {
+      setMineNotice({ ok: false, message: readableError(error) });
+    } finally {
+      setMineBusy(undefined);
+    }
+  }, [api]);
+
+  const uninstallPlugin = useCallback(async (name: string, confirmed: boolean) => {
+    setMineBusy(name);
+    setMineNotice(undefined);
+    try {
+      const result = await api.pluginUninstall(name, confirmed);
+      setMineNotice({ ok: result.ok, message: result.message });
+      if (result.plugins !== undefined) {
+        setMine((prev) => (prev === undefined ? prev : { ...prev, plugins: result.plugins! }));
+      }
+      if (result.ok) {
+        await loadMine();
+        try { setMarketQqStatus(await api.qqStatus(true)); } catch { /* 状态保持未验证 */ }
+      }
+    } catch (error) {
+      setMineNotice({ ok: false, message: readableError(error) });
+    } finally {
+      setMineBusy(undefined);
+    }
+  }, [api, loadMine]);
+
+  useEffect(() => api.onMarketInstallProgress((event) => setMarketProgress(event as MarketInstallProgressEvent)), [api]);
 
   const mergeTask = useCallback((next?: TaskSummary) => {
     if (!next) return;
@@ -1043,7 +1147,7 @@ export function App(): JSX.Element {
       </div>
       <div className="window-titlebar" aria-hidden="true" />
       <header className="brand"><img className="brand-mark" src={new URL('./assets/app-icon.svg', import.meta.url).href} alt="" /><div><h1>DeepSeek</h1><span>部署助手</span></div></header>
-      <nav className="navigation" aria-label="主导航">{([['home','选择接入方式'],['environment','部署向导'],['finish','使用指南'],['diagnostics','故障诊断']] as const).map(([id,label]) => <button key={id} className={(page === id || (id === 'environment' && ['deploy','model','qq'].includes(page))) ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id === 'environment' && !qqMode ? 'home' : id)}>{label}</button>)}</nav>
+      <nav className="navigation" aria-label="主导航">{([['home','选择接入方式'],['environment','部署向导'],['market','插件资源'],['finish','使用指南'],['diagnostics','故障诊断']] as const).map(([id,label]) => <button key={id} className={(page === id || (id === 'environment' && ['deploy','model','qq'].includes(page))) ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id === 'environment' && !qqMode ? 'home' : id)}>{label}</button>)}</nav>
       {page === 'home' && <main className="home-page">
         <div className="page-heading"><div><span className="eyebrow">开始使用</span><h2>选择 QQ 接入方式</h2><p>先选择你想使用的 QQ 方式，之后我们会引导你完成部署。</p></div></div>
         {task && ['paused','failed'].includes(task.status) && qqMode && <div className="resume-strip"><span>你有一个未完成的部署任务</span><button onClick={() => setPage('deploy')}>继续部署 →</button></div>}
@@ -1054,6 +1158,23 @@ export function App(): JSX.Element {
         <p className="mode-note">选择后将开始只读环境检查，你可以在部署前返回更改。</p>
       </main>}
       {['environment','deploy','model','qq'].includes(page) && <div className="journey-header"><div><span className="eyebrow">{qqMode === 'personal' ? '个人 QQ' : '官方 QQ 机器人'}</span><h2>部署向导</h2></div><div className="journey-steps" aria-label="部署步骤">{([['environment','环境检查'],['deploy','部署环境'],['model','接入 DeepSeek'],['qq','连接 QQ']] as const).map(([id,label], i) => <button type="button" key={id} className={page === id ? 'current' : ''} aria-current={page === id ? 'step' : undefined} onClick={() => setPage(id)}><b>{i + 1}</b><span>{label}</span></button>)}</div></div>}
+      {page === 'market' && <MarketCenter data={marketData} loading={marketLoading} error={marketError} route={qqMode ?? 'official'} progress={marketProgress} reload={() => void loadMarket()} openDiagnostics={() => setPage('diagnostics')} openHarness={() => api.openHarness()} dataDir={boot?.dataDir} installed={marketQqStatus?.pluginInstalled} installedVersion={marketQqStatus?.pluginVersion} install={async (id) => {
+        setMarketProgress(undefined);
+        const result = await api.marketInstall(id, true);
+        try { setMarketQqStatus(await api.qqStatus(true)); } catch { setMarketQqStatus(undefined); }
+        void loadMine();
+        return { ok: result.ok, message: result.ok ? '插件已安装；请重启助手并完成授权。' : result.message };
+      }} mine={{
+        ...(mine === undefined ? {} : { snapshot: mine }),
+        loading: mineLoading,
+        ...(mineError === undefined ? {} : { error: mineError }),
+        ...(mineBusy === undefined ? {} : { busy: mineBusy }),
+        ...(mineNotice === undefined ? {} : { notice: mineNotice }),
+        reload: () => void loadMine(),
+        openSettings: (name) => void openPluginSettings(name),
+        uninstall: (name, confirmed) => void uninstallPlugin(name, confirmed),
+        openPersonalQq: () => { setQqTab('personal'); setPage('qq'); },
+      }} />}
       {page === 'finish' && <section className="card"><h2>开始使用</h2><p>真实 QQ 消息仍需自行验证。</p><div className="overview">
         <div><span>运行环境</span><strong>{!env ? '未验证' : decision?.blocked ? '需要处理' : '已检测'}</strong></div>
         <div><span>助手程序</span><strong>{!info ? '未验证' : info.dshVersion ? '已安装' : '未安装'}</strong></div>

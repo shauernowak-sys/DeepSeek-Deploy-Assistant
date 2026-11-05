@@ -1,5 +1,7 @@
 # DeepSeek Deploy Assistant
 
+> **当前开发版本：测试版 V0.1.1（内部版本 `0.1.1`）**。V0.1 已打包；V0.1.1 尚未打包。Harness `0.2.1-rc.3` 是独立的第三方运行时版本；下方 M2/M2.1 的 `0.2.0` 信息是历史记录。当前版本规则见 [M4 交接文档](docs/M4-交接文档.md)。
+
 [![CI](https://github.com/shauernowak-sys/DeepSeek-Deploy-Assistant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shauernowak-sys/DeepSeek-Deploy-Assistant/actions/workflows/ci.yml)
 
 面向**没有编程基础的 Windows 用户**的 DeepSeek Harness 部署助手：把 Node.js 私有运行时、pnpm、Harness（dsh）、web profile 与官方 QQ 插件的一次性配置，收敛成"打开软件 → 点开始 → 完成"。
@@ -8,7 +10,7 @@
 
 ---
 
-## 当前状态
+## M2/M2.1 历史状态（非当前验收结论）
 
 | 项目 | 状态 |
 |---|---|

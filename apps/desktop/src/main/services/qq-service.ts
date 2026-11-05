@@ -19,6 +19,7 @@ import {
   DEFAULT_QQ_SETTINGS,
   QQ_BINDING_TIMEOUT_MS,
   QQ_PLUGIN_DISTRIBUTION,
+  type MarketInstallProgressEvent,
   type QqCredentialMode,
   type QqSaveResult,
   type QqSettings,
@@ -371,9 +372,9 @@ export class QqService {
   }
 
   /** 安装 / 修复插件到验证过的精确版本。 */
-  async repairPlugin(): Promise<QqSaveResult> {
+  async repairPlugin(onProgress?: (event: MarketInstallProgressEvent) => void): Promise<QqSaveResult> {
     try {
-      await this.harness.installQqPlugin();
+      await this.harness.installQqPlugin(onProgress);
       const plugins = await this.harness.listPlugins();
       const version = checkQqVersion(findQqPlugin(plugins)?.version, BASELINE.qqbot.version);
       if (version.state !== 'ok') {

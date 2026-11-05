@@ -333,6 +333,11 @@ export function buildDeploySteps(deps: DeployPlanDeps): Step[] {
         // `dsh-home` belongs to the user: even when this step creates it, it is NOT an installation
         // artifact. Recording it in `created[]` would make "cancel + cleanup" delete the Harness
         // profile (config, plugins, credentials) that the product must never touch.
+        const profileDir = join(paths.dshHome, 'profiles', BASELINE.dsh.profile);
+        if (await fileExists(join(profileDir, 'package.json'))) {
+          const backup = await createProfileBackup({ profileDir, backupsRoot: paths.stateBackups, keep: Number.MAX_SAFE_INTEGER });
+          ctx.log(`已有 profile 已备份：${backup.dir}`);
+        }
         await getCli().ensureProfile(BASELINE.dsh.profile);
         ctx.log(`profile 目录: ${join(paths.dshHome, 'profiles', BASELINE.dsh.profile)}`);
       },
