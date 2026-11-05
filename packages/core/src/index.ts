@@ -6,6 +6,7 @@ export * from './transfer/zip-writer';
 export * from './diagnostics/report';
 export * from './compat/matrix';
 export * from './market/distribution';
+export * from './market/curation';
 export * from './market/registries';
 export * from './market/registry-config';
 export * from './market/license-gate';

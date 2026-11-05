@@ -330,5 +330,917 @@
       ],
       "status": "verified"
     }
+  ],
+  "candidates": [
+    {
+      "id": "plg-dsh-whale-widget",
+      "name": "dsh-whale-widget",
+      "version": "0.4.2",
+      "status": "needs-review",
+      "license": {
+        "spdx": "MIT",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-aGDUfd3b2Abv4PoUn1KtnlasOIkoqgvIOR2+rAIEPDOt1qlHB7emlTq+4zdyoV5ZiicS+tkugPk86GyVUoDggQ==",
+      "depsClosure": [
+        {
+          "name": "dsh-whale-widget",
+          "version": "0.4.2",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "余额小鲸鱼挂件",
+        "summary": "在 Harness 网页右下角显示 DeepSeek 余额的小挂件。",
+        "description": "纯界面挂件：把账户余额画成一只鲸鱼并显示在页面角落，不涉及会话或 QQ 收发。",
+        "risk": "需要读取账户余额信息；发布者为个人账号，未经过本产品业务验收。"
+      },
+      "category": "ui-widget",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "widget",
+        "balance",
+        "ui"
+      ],
+      "installNotes": [
+        "已实测：dsh plugin add 成功并出现在 plugin list（3 s）。",
+        "仍未做业务验收（余额是否正确显示、是否影响宿主布局），因此不给安装按钮。"
+      ],
+      "review": {
+        "reason": "闭包仅 1 包且全部 MIT，已实测可装入锁定宿主 profile 并列出；但包自身未声明宿主兼容版本，仍待业务验收。",
+        "blockers": [
+          {
+            "code": "no-declared-compatibility",
+            "detail": "package.json 没有 dsh.compatibility.dshReleases；兼容性只能靠实测与后续回归确认。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "MIT",
+          "unpackedSizeBytes": 7220176,
+          "dependencyCount": 0,
+          "peerDependencyCount": 0,
+          "hasBundlePatch": true,
+          "declaredDshReleases": [],
+          "hasInstallScript": false,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/dsh-whale-widget",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:32:53.106Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "allowed",
+          "packageCount": 1,
+          "byLicense": [
+            {
+              "license": "MIT",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": []
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:32:53.106Z",
+          "installed": true,
+          "listed": true,
+          "elapsedMs": 2555
+        }
+      }
+    },
+    {
+      "id": "plg-dsh-zed-acp",
+      "name": "@8kugames/dsh-zed-acp",
+      "version": "0.3.9",
+      "status": "blocked",
+      "license": {
+        "spdx": "MIT",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-J16qJOiSId2dFu2ZmPgw0ouSDyDwByRyHOyMcRPo1mi49HPy/RSuLGx1CflK0UBgw5fchmrF6a01Nghe0hx8BA==",
+      "depsClosure": [
+        {
+          "name": "@8kugames/dsh-zed-acp",
+          "version": "0.3.9",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@agentclientprotocol/sdk",
+          "version": "1.4.0",
+          "license": "Apache-2.0",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@deepseek-ai/cosmokit",
+          "version": "1.8.6",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@deepseek-ai/dsh-brand",
+          "version": "0.2.1-rc.5",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@deepseek-ai/schemastery",
+          "version": "3.18.5",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@standard-schema/spec",
+          "version": "1.1.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "commander",
+          "version": "15.0.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "Zed 编辑器 ACP 桥",
+        "summary": "通过 Agent Client Protocol 把 Harness Agent 接到 Zed 编辑器。",
+        "description": "面向开发者的编辑器集成：在 Zed 里直接调用 Harness 的 agent 能力。",
+        "risk": "依赖大量宿主内部包；实测在锁定宿主上安装失败。"
+      },
+      "category": "dev-tools",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "acp",
+        "zed",
+        "editor",
+        "ide"
+      ],
+      "installNotes": [
+        "当前不可安装：锁定宿主拒绝该版本组合（需显式接受风险并做版本豁免，本产品不做）。",
+        "闭包本身干净（7 包，MIT/Apache-2.0），失败原因是宿主兼容性而不是许可。"
+      ],
+      "review": {
+        "reason": "实测在锁定宿主 0.2.0-rc.2 上 `dsh plugin add` 失败（peer 版本不被接受），需要版本豁免才能装。",
+        "blockers": [
+          {
+            "code": "host-version-incompatible",
+            "detail": "安装被宿主拒绝并提示需要 allow-version @8kugames/dsh-zed-acp@0.3.9 --dsh-version 0.2.0-rc.2 --accept-risk：说明该版本与锁定宿主不是被接受的组合。"
+          },
+          {
+            "code": "install-failed",
+            "detail": "dsh plugin add 退出码非 0（输出 \"nothing was installed\"），profile 未发生变化。"
+          },
+          {
+            "code": "no-declared-compatibility",
+            "detail": "未声明 dsh.compatibility.dshReleases；peer 依赖覆盖 36 个 @deepseek-ai 包，版本错配风险高。"
+          },
+          {
+            "code": "install-script",
+            "detail": "package.json 声明 prepare 脚本（npm run build）；从 git 安装时会执行。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "MIT",
+          "unpackedSizeBytes": 865432,
+          "dependencyCount": 4,
+          "peerDependencyCount": 36,
+          "hasBundlePatch": true,
+          "declaredDshReleases": [],
+          "hasInstallScript": true,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/%408kugames%2Fdsh-zed-acp",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:32:57.615Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "allowed",
+          "packageCount": 7,
+          "byLicense": [
+            {
+              "license": "MIT",
+              "count": 6
+            },
+            {
+              "license": "Apache-2.0",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": []
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:32:57.615Z",
+          "installed": false,
+          "listed": false,
+          "elapsedMs": 2198,
+          "failure": "0.2.1-rc.5\",\"@deepseek-ai/dsh-session-projection-cache\":\"~0.2.1-rc.5\"}. Running it may cause crashes or data loss. Update the plugin or install a plugin version compatible with this dsh runtime. To accept this risk explicitly, grant the exact-version exemption for @8kugames/dsh-zed-acp@0.3.9 on dsh 0.2.0-rc.2 with `dsh plugin allow-version` or the plugin manager, then retry the installation or restart dsh. Exact-version exemption: not active. / dsh: nothing was installed. / dsh: to accept the risk, run: dsh plugin --profile audit-dsh-zed-acp allow-version @8kugames/dsh-zed-acp@0.3.9 --dsh-vers"
+        }
+      }
+    },
+    {
+      "id": "plg-dsh-pet",
+      "name": "dsh-pet",
+      "version": "0.4.3",
+      "status": "blocked",
+      "license": {
+        "spdx": "MIT",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-pKNt+rd9xHi5CaVsc7qDPJlKkX6GuzRC6h0k/2ckio6tZfZH21nPe+7GUC1fB3etDGLlZMTiaa/Q1F2ljdRxOw==",
+      "depsClosure": [
+        {
+          "name": "@andresaya/edge-tts",
+          "version": "1.9.1",
+          "license": "GPL-3.0-only",
+          "verdict": "needs-review",
+          "redistributable": false
+        },
+        {
+          "name": "@anthropic-ai/sdk",
+          "version": "0.135.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@babel/runtime",
+          "version": "7.29.10",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@electron-internal/extract-zip",
+          "version": "1.0.8",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@electron/get",
+          "version": "5.1.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@opentelemetry/api",
+          "version": "1.10.0",
+          "license": "Apache-2.0",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "@stablelib/base64",
+          "version": "1.0.1",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "commander",
+          "version": "12.1.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "debug",
+          "version": "4.4.3",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "dsh-pet",
+          "version": "0.4.3",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "env-paths",
+          "version": "3.0.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "fast-sha256",
+          "version": "1.3.0",
+          "license": "Unlicense",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "graceful-fs",
+          "version": "4.2.11",
+          "license": "ISC",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "json-schema-to-ts",
+          "version": "3.1.1",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "ms",
+          "version": "2.1.3",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "openai",
+          "version": "7.39.0",
+          "license": "Apache-2.0",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "progress",
+          "version": "2.0.3",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "semver",
+          "version": "7.8.6",
+          "license": "ISC",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "standardwebhooks",
+          "version": "1.1.1",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "sumchecker",
+          "version": "3.0.1",
+          "license": "Apache-2.0",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "ts-algebra",
+          "version": "2.0.0",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "ws",
+          "version": "8.22.1",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "zod",
+          "version": "4.6.7",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "桌面宠物伙伴",
+        "summary": "常驻 Harness 网页界面的「电子宠物」式陪伴小组件。",
+        "description": "在 Harness 界面里养一只会互动的伴侣角色，支持表情/动作与语音合成。功能属于陪伴互动类，不是 QQ 接入。",
+        "risk": "包体约 71 MB；闭包含一个 GPL-3.0-only 组件，不得随我方产物分发；发布者为个人账号。"
+      },
+      "category": "companion",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "companion",
+        "pet",
+        "widget"
+      ],
+      "installNotes": [
+        "当前不可安装：与锁定宿主版本不兼容；即使装上也不得随我方产物分发（GPL-3.0-only 依赖）。",
+        "实测记录：dsh plugin add 可装入 profile 并出现在 plugin list（参考，不代表可用）。"
+      ],
+      "review": {
+        "reason": "声明只兼容 0.2.1-rc.2 及更新的宿主（与锁定 0.2.0-rc.2 不符），体积约 71 MB，闭包含 GPL-3.0-only 组件。",
+        "blockers": [
+          {
+            "code": "host-version-incompatible",
+            "detail": "dsh.compatibility.dshReleases 只列 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.2-alpha.2，不含锁定的 0.2.0-rc.2。"
+          },
+          {
+            "code": "size-excessive",
+            "detail": "unpackedSize 74 298 788 B（约 71 MB），远超首批策展的体积预期。"
+          },
+          {
+            "code": "closure-needs-review",
+            "detail": "闭包 23 包中 @andresaya/edge-tts 为 GPL-3.0-only：随包分发需法务判断 copyleft 义务。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "MIT",
+          "unpackedSizeBytes": 74298788,
+          "dependencyCount": 6,
+          "peerDependencyCount": 12,
+          "hasBundlePatch": true,
+          "declaredDshReleases": [
+            "0.2.1-rc.2",
+            "0.2.1-rc.3",
+            "0.2.2-alpha.2"
+          ],
+          "hasInstallScript": false,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/dsh-pet",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:33:03.318Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "needs-review",
+          "packageCount": 23,
+          "byLicense": [
+            {
+              "license": "MIT",
+              "count": 16
+            },
+            {
+              "license": "Apache-2.0",
+              "count": 3
+            },
+            {
+              "license": "ISC",
+              "count": 2
+            },
+            {
+              "license": "GPL-3.0-only",
+              "count": 1
+            },
+            {
+              "license": "Unlicense",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": [
+            {
+              "name": "@andresaya/edge-tts",
+              "version": "1.9.1",
+              "license": "GPL-3.0-only",
+              "verdict": "needs-review",
+              "redistributable": false
+            }
+          ]
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:33:03.318Z",
+          "installed": true,
+          "listed": true,
+          "elapsedMs": 5233
+        }
+      }
+    },
+    {
+      "id": "plg-dsh-auto-memory",
+      "name": "@a9i5k4/dsh-auto-memory",
+      "version": "3.3.17",
+      "status": "blocked",
+      "license": {
+        "spdx": "BSD-3-Clause",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-wZ3XpXVDhiezw3lFfdq1+8F3SfPb6zKscRJ3XTh2Zt5WockkY9x4vdP0LfLxjVY1aD9P3icKBquZWJBFohE6Kw==",
+      "depsClosure": [
+        {
+          "name": "@a9i5k4/dsh-auto-memory",
+          "version": "3.3.17",
+          "license": "BSD-3-Clause",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "自动记忆插件",
+        "summary": "为 Harness 会话增加自动长期记忆。",
+        "description": "把对话内容写入自有记忆库并在后续会话中召回。PRD §10.5-6 已判定基础记忆属于宿主原生能力，插件形态只在用户明确需要跨会话外部记忆时才考虑。",
+        "risk": "会把会话内容写入自有存储；实测在锁定宿主上安装失败（需要授权依赖构建脚本）。"
+      },
+      "category": "memory",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "memory",
+        "recall",
+        "long-term"
+      ],
+      "installNotes": [
+        "当前不可安装：锁定宿主上安装被拒（需要授权构建脚本），且优先使用宿主原生记忆。",
+        "闭包本身干净（1 包，BSD-3-Clause）；失败原因是安装期的脚本授权，不是许可。"
+      ],
+      "review": {
+        "reason": "实测在锁定宿主上安装失败（依赖需要运行构建脚本，被 pnpm 拦截）；且 PRD CR-1 要求优先使用宿主原生记忆。",
+        "blockers": [
+          {
+            "code": "install-failed",
+            "detail": "dsh plugin add 退出码非 0，输出要求先 `pnpm approve-builds`：安装过程会执行依赖的构建脚本。"
+          },
+          {
+            "code": "native-capability-preferred",
+            "detail": "PRD §10.5-6 / CR-1：基础记忆由宿主原生会话持久化提供，插件形态属可选增强。"
+          },
+          {
+            "code": "no-declared-compatibility",
+            "detail": "未声明 dsh.compatibility.dshReleases，无法判断是否支持 0.2.0-rc.2。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "BSD-3-Clause",
+          "unpackedSizeBytes": 29719820,
+          "dependencyCount": 0,
+          "peerDependencyCount": 1,
+          "hasBundlePatch": true,
+          "declaredDshReleases": [],
+          "hasInstallScript": false,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/%40a9i5k4%2Fdsh-auto-memory",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:33:11.533Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "allowed",
+          "packageCount": 1,
+          "byLicense": [
+            {
+              "license": "BSD-3-Clause",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": []
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:33:11.533Z",
+          "installed": false,
+          "listed": false,
+          "elapsedMs": 5237,
+          "failure": "[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: onnxruntime-node@1.21.0, protobufjs@7.6.6, sharp@0.34.5 / Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts. / dsh: initialized profile audit-dsh-auto-memory at C:\\Users\\LIU\\AppData\\Local\\Temp\\dda-candidate-audit\\dsh-home\\profiles\\audit-dsh-auto-memory / dsh: plugin command failed; diagnostics: C:\\Users\\LIU\\AppData\\Local\\Temp\\dda-candidate-audit\\dsh-home\\profiles\\audit-dsh-auto-memory\\.plugin-manager\\logs\\operation-aI8Qpu\\pnpm.log"
+        }
+      }
+    },
+    {
+      "id": "plg-dshmarket",
+      "name": "dshmarket",
+      "version": "1.73.11",
+      "status": "blocked",
+      "license": {
+        "spdx": "MIT",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-AkdHRDv/Zd2cpXG2BqM+WDHhsTgCRIsZTESDpYSB1GsjkWD2IqwZoRp/ZPvMFwziYNpNcFImVSYmZLTZiMOZpA==",
+      "depsClosure": [
+        {
+          "name": "argparse",
+          "version": "2.0.1",
+          "license": "Python-2.0",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "dshmarket",
+          "version": "1.73.11",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "js-yaml",
+          "version": "4.3.2",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "undici",
+          "version": "7.30.1",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "第三方插件市场（dshmarket）",
+        "summary": "在 Harness 内部提供第三方插件市场的浏览、搜索与安装界面。",
+        "description": "它自带一套插件源与安装入口，与本产品的「策展目录 + 白名单门禁」是竞争关系：一旦安装，用户可在其中装入本产品从未评估过的插件。",
+        "risk": "会绕过本产品的兼容性与许可门禁；来源与索引内容不受本产品控制。"
+      },
+      "category": "market",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "market",
+        "catalog",
+        "install"
+      ],
+      "installNotes": [
+        "闭包干净、技术上可装（实测 dsh plugin add 成功，5 s）。",
+        "仍然不推荐：它会绕过本产品的门禁，属于产品范围冲突而非技术失败。"
+      ],
+      "review": {
+        "reason": "与本产品的策展职责重复，且会在内部另起一条不受控的安装通道（PRD N8 / Gate 4 ⑤ 冲突）。",
+        "blockers": [
+          {
+            "code": "duplicates-product-scope",
+            "detail": "内置自己的插件源与安装入口，绕过本产品的 compat 与许可门禁（PRD N8 明确不做在线插件市场平台）。"
+          },
+          {
+            "code": "install-script",
+            "detail": "package.json 声明 prepare 脚本（npm run build）；从 git 安装时会执行。"
+          },
+          {
+            "code": "no-declared-compatibility",
+            "detail": "未声明 dsh.compatibility.dshReleases。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "MIT",
+          "unpackedSizeBytes": 3096859,
+          "dependencyCount": 2,
+          "peerDependencyCount": 3,
+          "hasBundlePatch": true,
+          "declaredDshReleases": [],
+          "hasInstallScript": true,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/dshmarket",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:33:17.830Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "allowed",
+          "packageCount": 4,
+          "byLicense": [
+            {
+              "license": "MIT",
+              "count": 3
+            },
+            {
+              "license": "Python-2.0",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": []
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:33:17.830Z",
+          "installed": true,
+          "listed": true,
+          "elapsedMs": 4542
+        }
+      }
+    },
+    {
+      "id": "plg-dsh-plugin-catalog",
+      "name": "dsh-plugin-catalog",
+      "version": "2026.1104.14928",
+      "status": "blocked",
+      "license": {
+        "spdx": "CC0-1.0",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-ibbC9SIfEgjui2jOhi0R7gtGOEqk7ejabAEpUXQSUc16fyAikg2jk8ebo92FPB1YhSUIiZabmcei6JloN7iMkQ==",
+      "depsClosure": [
+        {
+          "name": "dsh-plugin-catalog",
+          "version": "2026.1104.14928",
+          "license": "CC0-1.0",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "社区插件目录（数据包）",
+        "summary": "一份社区插件清单的数据包，不含可挂载的插件入口。",
+        "description": "内容是插件元数据（CC0-1.0），本身不是 DSH 插件：没有 dsh.bundle.patch，装到 profile 里也不会被挂载。",
+        "risk": "容易让用户误以为\"装上就有插件市场\"；实际只是一份数据。"
+      },
+      "category": "market",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "catalog",
+        "data",
+        "awesome-list"
+      ],
+      "installNotes": [
+        "注意：实测 dsh plugin add 会成功并出现在 plugin list（3 s），但因为它不是 bundle，\"列出\"不等于\"可用\"。",
+        "当前不可安装：没有可挂载的插件入口。"
+      ],
+      "review": {
+        "reason": "不是插件：未声明 dsh.bundle.patch。实测虽然能被 plugin add 装上并列出，但不会成为 bundle 层。",
+        "blockers": [
+          {
+            "code": "not-a-bundle",
+            "detail": "package.json 没有 dsh.bundle.patch（实测安装后依然为空），安装不会产生可挂载的 bundle 层。"
+          },
+          {
+            "code": "no-declared-compatibility",
+            "detail": "未声明 dsh.compatibility.dshReleases。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "CC0-1.0",
+          "unpackedSizeBytes": 14940131,
+          "dependencyCount": 0,
+          "peerDependencyCount": 0,
+          "hasBundlePatch": false,
+          "declaredDshReleases": [],
+          "hasInstallScript": false,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/dsh-plugin-catalog",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:33:24.101Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "allowed",
+          "packageCount": 1,
+          "byLicense": [
+            {
+              "license": "CC0-1.0",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": []
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:33:24.101Z",
+          "installed": true,
+          "listed": true,
+          "elapsedMs": 3410
+        }
+      }
+    },
+    {
+      "id": "plg-dsh-plugin-mall",
+      "name": "@1e0zj/dsh-plugin-mall",
+      "version": "0.4.17",
+      "status": "blocked",
+      "license": {
+        "spdx": "MIT",
+        "redistributable": false,
+        "needsReview": true
+      },
+      "integrity": "sha512-iblSZOwugF02CVBlSSD4sDrb8KUkEoi47s2Rz2yz4v9G6izG0z/ZolIAcH7qn8WGdlGrsSInrS4a4M3SdGguOw==",
+      "depsClosure": [
+        {
+          "name": "@1e0zj/dsh-plugin-mall",
+          "version": "0.4.17",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "argparse",
+          "version": "2.0.1",
+          "license": "Python-2.0",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "js-yaml",
+          "version": "4.3.2",
+          "license": "MIT",
+          "verdict": "allowed",
+          "redistributable": true
+        },
+        {
+          "name": "semver",
+          "version": "7.8.6",
+          "license": "ISC",
+          "verdict": "allowed",
+          "redistributable": true
+        }
+      ],
+      "zh": {
+        "name": "第三方插件商城（dsh-plugin-mall）",
+        "summary": "另一个在 Harness 内提供插件浏览与安装的商城。",
+        "description": "功能与 dshmarket 类似：自带插件源与安装入口，不受本产品门禁控制。",
+        "risk": "会绕过本产品的兼容性与许可门禁；发布者与索引内容无法追溯。"
+      },
+      "category": "market",
+      "labels": [
+        "community",
+        "not-verified"
+      ],
+      "keywords": [
+        "market",
+        "mall",
+        "install"
+      ],
+      "installNotes": [
+        "闭包干净、技术上可装（实测 dsh plugin add 成功，3 s）。",
+        "仍然不推荐：与本产品的策展与门禁职责冲突。"
+      ],
+      "review": {
+        "reason": "与本产品的策展职责重复，且安装通道不受本产品门禁控制。",
+        "blockers": [
+          {
+            "code": "duplicates-product-scope",
+            "detail": "自带插件来源与安装入口，绕过本产品的 compat 与许可门禁（PRD N8）。"
+          },
+          {
+            "code": "no-declared-compatibility",
+            "detail": "未声明 dsh.compatibility.dshReleases。"
+          }
+        ],
+        "evaluatedAt": "2026-11-05",
+        "facts": {
+          "license": "MIT",
+          "unpackedSizeBytes": 1115600,
+          "dependencyCount": 2,
+          "peerDependencyCount": 4,
+          "hasBundlePatch": true,
+          "declaredDshReleases": [],
+          "hasInstallScript": false,
+          "maintainers": 1
+        },
+        "source": "https://registry.npmjs.org/%401e0zj%2Fdsh-plugin-mall",
+        "closureAudit": {
+          "auditedAt": "2026-11-05T00:33:29.292Z",
+          "method": "隔离目录 + 真实 pnpm 安装（--ignore-scripts）+ 遍历已安装 node_modules 解析闭包 + evaluateClosure 现算裁决",
+          "verdict": "allowed",
+          "packageCount": 4,
+          "byLicense": [
+            {
+              "license": "MIT",
+              "count": 2
+            },
+            {
+              "license": "ISC",
+              "count": 1
+            },
+            {
+              "license": "Python-2.0",
+              "count": 1
+            }
+          ],
+          "denied": [],
+          "needsReview": []
+        },
+        "installProbe": {
+          "hostDsh": "0.2.0-rc.2",
+          "probedAt": "2026-11-05T00:33:29.292Z",
+          "installed": true,
+          "listed": true,
+          "elapsedMs": 3354
+        }
+      }
+    }
   ]
 }

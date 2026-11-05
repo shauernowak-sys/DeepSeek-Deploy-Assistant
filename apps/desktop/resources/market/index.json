@@ -15,6 +15,36 @@
           "en": "QQ integrations",
           "zh": "QQ 接入"
         }
+      },
+      "companion": {
+        "title": {
+          "en": "Companion & interaction",
+          "zh": "陪伴互动"
+        }
+      },
+      "ui-widget": {
+        "title": {
+          "en": "Interface widgets",
+          "zh": "界面小组件"
+        }
+      },
+      "memory": {
+        "title": {
+          "en": "Memory",
+          "zh": "记忆增强"
+        }
+      },
+      "dev-tools": {
+        "title": {
+          "en": "Developer tools",
+          "zh": "开发工具"
+        }
+      },
+      "market": {
+        "title": {
+          "en": "Plugin market",
+          "zh": "插件市场"
+        }
       }
     },
     "labels": {
@@ -22,6 +52,18 @@
         "title": {
           "en": "Official",
           "zh": "官方"
+        }
+      },
+      "community": {
+        "title": {
+          "en": "Community",
+          "zh": "社区"
+        }
+      },
+      "not-verified": {
+        "title": {
+          "en": "Not verified",
+          "zh": "未验证"
         }
       }
     },

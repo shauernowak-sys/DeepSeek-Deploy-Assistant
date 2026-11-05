@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { Catalog, CatalogEntry, CatalogOverlay, CompatMatrix } from '@dda/spec';
+import type { Catalog, CatalogCandidate, CatalogEntry, CatalogOverlay, CompatMatrix } from '@dda/spec';
 import { CatalogOverlaySchema } from '@dda/spec';
 
 import { evaluateClosure, normalizeSpdx } from './license-gate';
@@ -49,10 +49,17 @@ export const MARKET_FIELD_OWNERSHIP = {
 /** 索引声明过的分类 id；条目只能引用这里出现过的 id（官方校验器会强校验）。 */
 export const MARKET_CATEGORIES: Readonly<Record<string, { en: string; zh: string }>> = {
   'qq-bot': { en: 'QQ integrations', zh: 'QQ 接入' },
+  companion: { en: 'Companion & interaction', zh: '陪伴互动' },
+  'ui-widget': { en: 'Interface widgets', zh: '界面小组件' },
+  memory: { en: 'Memory', zh: '记忆增强' },
+  'dev-tools': { en: 'Developer tools', zh: '开发工具' },
+  market: { en: 'Plugin market', zh: '插件市场' },
 };
 
 export const MARKET_LABELS: Readonly<Record<string, { en: string; zh: string }>> = {
   official: { en: 'Official', zh: '官方' },
+  community: { en: 'Community', zh: '社区' },
+  'not-verified': { en: 'Not verified', zh: '未验证' },
 };
 
 export const MARKET_SORT_KEYS: Readonly<Record<string, { en: string; zh: string; order: 'asc' | 'desc' }>> = {
@@ -186,7 +193,11 @@ export function buildMarketIndex(catalog: Catalog): MarketIndexDocument {
  * 生成 overlay。`depsClosure` 的裁决在这里由 D11 现算，不从 catalog 读取，
  * 保证「许可事实变了 → 裁决自动跟着变」。
  */
-export function buildOverlay(catalog: Catalog, generatedFrom = 'catalog'): CatalogOverlay {
+export function buildOverlay(
+  catalog: Catalog,
+  generatedFrom = 'catalog',
+  candidates: readonly CatalogCandidate[] = [],
+): CatalogOverlay {
   const plugins = catalog.entries.map((entry) => {
     const report = evaluateClosure(`${entry.name}@${entry.version}`, entry.depsClosure);
     return {
@@ -208,7 +219,24 @@ export function buildOverlay(catalog: Catalog, generatedFrom = 'catalog'): Catal
     };
   });
 
-  return CatalogOverlaySchema.parse({ schemaVersion: 1, generatedFrom, plugins });
+  // 候选只进 overlay，不进 index.json：索引里出现即等于对外宣称"这个组合能装"。
+  const overlayCandidates = candidates.map((candidate) => ({
+    id: candidate.id,
+    name: candidate.name,
+    version: candidate.version,
+    status: candidate.status,
+    license: candidate.license,
+    integrity: candidate.integrity,
+    depsClosure: candidate.depsClosure,
+    zh: candidate.zh,
+    category: candidate.category,
+    labels: candidate.labels,
+    keywords: candidate.keywords,
+    installNotes: candidate.installNotes,
+    review: candidate.review,
+  }));
+
+  return CatalogOverlaySchema.parse({ schemaVersion: 1, generatedFrom, plugins, candidates: overlayCandidates });
 }
 
 /** catalog 自身的规则（不依赖官方校验器，也不联网）。返回问题列表而不是抛错，便于一次报全。 */

@@ -24,6 +24,7 @@ import {
   MARKET_INDEX_BASE_URL,
   buildMarketIndex,
   buildOverlay,
+  collectCandidateProblems,
   collectCatalogProblems,
   collectIconProblems,
   collectIndexProblems,
@@ -31,7 +32,7 @@ import {
   type RegistryVersionFacts,
 } from '@dda/core';
 import { loadMatrix } from '@dda/core';
-import type { Catalog } from '@dda/spec';
+import type { Catalog, CatalogCandidate } from '@dda/spec';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const DEFAULT_OUT_DIR = join(REPO_ROOT, 'apps', 'desktop', 'resources', 'market');
@@ -63,10 +64,13 @@ function parseArgs(argv: readonly string[]): Options {
   return options;
 }
 
-async function loadCatalog(): Promise<Catalog> {
+async function loadCatalog(): Promise<{ catalog: Catalog; candidates: readonly CatalogCandidate[] }> {
   // 动态导入：catalog 在模块顶层就做 zod 解析，静态导入会让错误以堆栈形式抛出、看不出是哪个字段。
-  const module = (await import('../catalog/index')) as { CATALOG: Catalog };
-  return module.CATALOG;
+  const module = (await import('../catalog/index')) as {
+    CATALOG: Catalog;
+    CATALOG_CANDIDATES: readonly CatalogCandidate[];
+  };
+  return { catalog: module.CATALOG, candidates: module.CATALOG_CANDIDATES };
 }
 
 function npmJson(args: readonly string[]): unknown {
@@ -133,14 +137,19 @@ function printFieldOwnership(): void {
 
 async function main(): Promise<number> {
   const options = parseArgs(process.argv.slice(2));
-  const catalog = await loadCatalog();
+  const { catalog, candidates } = await loadCatalog();
   const matrix = loadMatrix(JSON.parse(await readFile(COMPAT_PATH, 'utf8')));
 
   const problems: string[] = [...collectCatalogProblems(catalog, matrix)];
+  problems.push(...collectCandidateProblems(catalog, candidates, matrix));
   problems.push(...(await collectIconProblems(CATALOG_DIR, catalog)));
 
   const index = buildMarketIndex(catalog);
-  const overlay = buildOverlay(catalog, `catalog@${catalog.entries.map((e) => `${e.name}@${e.version}`).join(',')}`);
+  const overlay = buildOverlay(
+    catalog,
+    `catalog@${catalog.entries.map((e) => `${e.name}@${e.version}`).join(',')}`,
+    candidates,
+  );
 
   await mkdir(options.outDir, { recursive: true });
   await writeFile(join(options.outDir, 'index.json'), `${JSON.stringify(index, null, 2)}\n`, 'utf8');
@@ -179,7 +188,7 @@ async function main(): Promise<number> {
   console.log(
     `[build-index] index.json: ${index.plugins.length} 个插件 / ` +
       `${index.plugins.reduce((sum, plugin) => sum + plugin.versions.length, 0)} 个版本 · ` +
-      `overlay: ${overlay.plugins.length} 条 · 图标: ${iconCount} 个`,
+      `overlay: ${overlay.plugins.length} 条可安装 + ${overlay.candidates.length} 条候选 · 图标: ${iconCount} 个`,
   );
   console.log(`[build-index] 输出目录: ${options.outDir}`);
   console.log(`[build-index] 校验基址: ${options.baseUrl}`);

@@ -16,6 +16,8 @@ import {
   MARKET_INDEX_BASE_URL,
   assertArtifactsExist,
   buildMarketIndex,
+  buildOverlay,
+  collectCandidateProblems,
   collectCatalogProblems,
   collectIconProblems,
   collectIndexProblems,
@@ -23,7 +25,7 @@ import {
 } from '@dda/core';
 import { loadMatrix } from '@dda/core';
 import { CatalogOverlaySchema } from '@dda/spec';
-import type { Catalog } from '@dda/spec';
+import type { Catalog, CatalogCandidate } from '@dda/spec';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const DEFAULT_DIR = join(REPO_ROOT, 'apps', 'desktop', 'resources', 'market');
@@ -51,10 +53,14 @@ async function main(): Promise<number> {
   const { dir, baseUrl } = parseArgs(process.argv.slice(2));
   const problems: string[] = [];
 
-  const { CATALOG } = (await import('../catalog/index')) as { CATALOG: Catalog };
+  const { CATALOG, CATALOG_CANDIDATES } = (await import('../catalog/index')) as {
+    CATALOG: Catalog;
+    CATALOG_CANDIDATES: readonly CatalogCandidate[];
+  };
   const matrix = loadMatrix(JSON.parse(await readFile(COMPAT_PATH, 'utf8')));
 
   problems.push(...collectCatalogProblems(CATALOG, matrix));
+  problems.push(...collectCandidateProblems(CATALOG, CATALOG_CANDIDATES, matrix));
   problems.push(...(await collectIconProblems(dir, CATALOG)));
 
   const written = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as MarketIndexDocument;
@@ -81,11 +87,18 @@ async function main(): Promise<number> {
   const overlay = CatalogOverlaySchema.safeParse(overlayRaw);
   if (!overlay.success) {
     problems.push(`catalog.overlay.json 校验失败: ${overlay.error.issues.map((i) => i.path.join('.')).join(', ')}`);
+  } else {
+    // overlay 里的候选必须与 catalog 同源：只校验 schema 抓不到"来源改了但产物没重建"。
+    const expectedOverlay = buildOverlay(CATALOG, overlay.data.generatedFrom, CATALOG_CANDIDATES);
+    if (JSON.stringify(expectedOverlay) !== JSON.stringify(overlay.data)) {
+      problems.push('catalog.overlay.json 与当前 catalog/候选不一致 → 产物过期，请重新运行 npm run build:index');
+    }
   }
 
   console.log(
     `[validate-index] ${dir}: ${parsed.plugins.length} 个插件 / ` +
-      `${parsed.plugins.reduce((sum, plugin) => sum + plugin.versions.length, 0)} 个版本`,
+      `${parsed.plugins.reduce((sum, plugin) => sum + plugin.versions.length, 0)} 个版本 · ` +
+      `候选 ${overlay.success ? overlay.data.candidates.length : 0} 条`,
   );
 
   if (problems.length > 0) {

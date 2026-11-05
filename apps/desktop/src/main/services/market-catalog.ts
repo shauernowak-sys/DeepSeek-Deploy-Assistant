@@ -1,5 +1,7 @@
-import { OFFICIAL_QQBOT_ENTRY } from '../../../../../catalog/entries/official-qqbot';
 import type { CatalogEntry } from '@dda/spec';
+
+import { CATALOG_CANDIDATES } from '../../../../../catalog/candidates';
+import { OFFICIAL_QQBOT_ENTRY } from '../../../../../catalog/entries/official-qqbot';
 
 /**
  * 主进程侧的 catalog 视图。
@@ -7,7 +9,7 @@ import type { CatalogEntry } from '@dda/spec';
  * 事实来源仍是仓库根的 `catalog/entries/*.ts`（D01 的构建输入）；这里只做运行时查询，
  * 打包时由 electron-vite 内联进主进程 bundle，因此安装包里不需要额外的 JSON 文件。
  */
-export { OFFICIAL_QQBOT_ENTRY };
+export { CATALOG_CANDIDATES, OFFICIAL_QQBOT_ENTRY };
 
 export const MARKET_ENTRIES: readonly CatalogEntry[] = [OFFICIAL_QQBOT_ENTRY];
 

@@ -20,6 +20,7 @@
     "build:index": "tsx scripts/build-index.ts",
     "validate:index": "tsx scripts/validate-index.ts",
     "probe:registry": "tsx scripts/registry-probe.ts",
+    "audit:candidates": "tsx scripts/candidate-audit.ts",
     "e2e:restore": "tsx scripts/d08-restore-e2e.ts",
     "e2e:install": "tsx scripts/install-e2e.ts",
     "ui:smoke:recovery": "node scripts/m4-recovery-ui-smoke.mjs",
