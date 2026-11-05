@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron';
  */
 const api = {
   bootstrap: () => ipcRenderer.invoke('app:bootstrap'),
+  copyText: (text: string) => ipcRenderer.invoke('clipboard:write', { text }),
   marketList: () => ipcRenderer.invoke('market:list'),
   marketInstall: (id: string, confirmed: boolean) => ipcRenderer.invoke('market:install', { id, confirmed }),
   onMarketInstallProgress: (handler: (event: unknown) => void) => {

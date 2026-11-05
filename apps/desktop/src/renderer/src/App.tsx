@@ -352,6 +352,7 @@ type Api = {
   marketList: () => Promise<({ ok: true } & MarketData) | { ok: false; message: string }>;
   marketInstall: (id: string, confirmed: boolean) => Promise<{ ok: boolean; message: string }>;
   onMarketInstallProgress: (handler: (event: unknown) => void) => () => void;
+  copyText: (text: string) => Promise<{ ok: boolean }>;
   pluginsList: () => Promise<({ ok: true } & PluginInventorySnapshot) | { ok: false; message: string }>;
   pluginOpenSettings: (name: string) => Promise<{
     ok: boolean;
@@ -1158,7 +1159,7 @@ export function App(): JSX.Element {
         <p className="mode-note">选择后将开始只读环境检查，你可以在部署前返回更改。</p>
       </main>}
       {['environment','deploy','model','qq'].includes(page) && <div className="journey-header"><div><span className="eyebrow">{qqMode === 'personal' ? '个人 QQ' : '官方 QQ 机器人'}</span><h2>部署向导</h2></div><div className="journey-steps" aria-label="部署步骤">{([['environment','环境检查'],['deploy','部署环境'],['model','接入 DeepSeek'],['qq','连接 QQ']] as const).map(([id,label], i) => <button type="button" key={id} className={page === id ? 'current' : ''} aria-current={page === id ? 'step' : undefined} onClick={() => setPage(id)}><b>{i + 1}</b><span>{label}</span></button>)}</div></div>}
-      {page === 'market' && <MarketCenter data={marketData} loading={marketLoading} error={marketError} route={qqMode ?? 'official'} progress={marketProgress} reload={() => void loadMarket()} openDiagnostics={() => setPage('diagnostics')} openHarness={() => api.openHarness()} dataDir={boot?.dataDir} installed={marketQqStatus?.pluginInstalled} installedVersion={marketQqStatus?.pluginVersion} install={async (id) => {
+      {page === 'market' && <MarketCenter data={marketData} loading={marketLoading} error={marketError} route={qqMode ?? 'official'} progress={marketProgress} reload={() => void loadMarket()} openDiagnostics={() => setPage('diagnostics')} openHarness={() => api.openHarness()} dataDir={boot?.dataDir} installed={marketQqStatus?.pluginInstalled} installedVersion={marketQqStatus?.pluginVersion} copyText={(value) => api.copyText(value)} install={async (id) => {
         setMarketProgress(undefined);
         const result = await api.marketInstall(id, true);
         try { setMarketQqStatus(await api.qqStatus(true)); } catch { setMarketQqStatus(undefined); }

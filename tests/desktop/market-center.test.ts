@@ -8,7 +8,7 @@ import { MarketInstallSchema } from '@dda/spec';
 
 import { CATALOG, CATALOG_CANDIDATES } from '../../catalog';
 import { findInstallableMarketEntry, loadMarketCatalog } from '../../apps/desktop/src/main/services/market-catalog';
-import { MarketCenter, MarketEvidence, MarketInstallAction, guideFor } from '../../apps/desktop/src/renderer/src/components/MarketCenter';
+import { MarketCenter, MarketEvidence, MarketInstallAction, guideFor, installSpecFor, specMissingReason, InstallAddress } from '../../apps/desktop/src/renderer/src/components/MarketCenter';
 
 const marketDir = join(__dirname, '../../apps/desktop/resources/market');
 
@@ -124,6 +124,43 @@ describe('资源中心清单和安装入口', () => {
     expect(html).not.toContain('查看原因');
     expect(html).not.toContain('暂不可安装');
     expect(html).not.toContain('查看安装方案');
+  });
+
+  it('安装地址按真实来源生成；blocked 与 manual 不给地址', () => {
+    const qq = CATALOG.entries[0]!;
+    expect(installSpecFor(qq)).toBe('@tencent-connect/dsh-qqbot@0.5.5');
+
+    const aurabot = CATALOG_CANDIDATES.find((item) => item.id === 'plg-dsh-aurabot-qq')!;
+    expect(installSpecFor(aurabot)).toBe('github:aureth-labs/dsh-aurabot-qq');
+
+    const meme = CATALOG_CANDIDATES.find((item) => item.name === 'dsh-meme')!;
+    expect(installSpecFor(meme)).toBe(`dsh-meme@${meme.version}`);
+
+    for (const blocked of CATALOG_CANDIDATES.filter((item) => item.status === 'blocked')) {
+      expect(installSpecFor(blocked), blocked.name).toBeUndefined();
+      expect(specMissingReason(blocked)).toContain('没有通过本产品的安装评估');
+    }
+    const manual = CATALOG_CANDIDATES.filter((item) => item.market.installMethod === 'manual');
+    for (const item of manual) expect(installSpecFor(item), item.name).toBeUndefined();
+  });
+
+  it('安装地址一屏可见且可复制；没有地址时只说明原因', () => {
+    const withSpec = renderToStaticMarkup(createElement(InstallAddress, {
+      spec: '@tencent-connect/dsh-qqbot@0.5.5',
+      reason: '不应出现',
+      onCopy: () => undefined,
+    }));
+    expect(withSpec).toContain('安装地址');
+    expect(withSpec).toContain('@tencent-connect/dsh-qqbot@0.5.5');
+    expect(withSpec).toContain('复制');
+    expect(withSpec).not.toContain('不应出现');
+
+    const withoutSpec = renderToStaticMarkup(createElement(InstallAddress, {
+      reason: '这个插件没有通过本产品的安装评估，因此不提供安装地址。',
+      onCopy: () => undefined,
+    }));
+    expect(withoutSpec).toContain('没有通过本产品的安装评估');
+    expect(withoutSpec).not.toContain('<button');
   });
 
   it('Aurabot 引导基于真实截图，并写清未验证范围', () => {

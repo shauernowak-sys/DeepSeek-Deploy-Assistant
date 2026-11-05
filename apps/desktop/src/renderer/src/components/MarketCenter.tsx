@@ -129,6 +129,62 @@ export function guideFor(item: Item): Guide | undefined {
   return undefined;
 }
 
+/**
+ * 详情页最醒目的部分：可复制的安装地址。
+ * 没有地址时不渲染复制按钮，只说明原因（blocked / manual / none 不给地址）。
+ */
+export function InstallAddress({
+  spec,
+  reason,
+  onCopy,
+}: {
+  spec?: string;
+  reason: string;
+  onCopy: (value: string) => void;
+}): JSX.Element {
+  if (spec === undefined) {
+    return (
+      <div className="market-install-spec market-install-spec-off">
+        <span className="market-install-spec-label">安装地址</span>
+        <p>{reason}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="market-install-spec">
+      <span className="market-install-spec-label">安装地址</span>
+      <code>{spec}</code>
+      <button className="primary" onClick={() => onCopy(spec)}>复制</button>
+    </div>
+  );
+}
+
+/**
+ * 可复制给 Harness 的安装地址。
+ *
+ * 只有真实存在的安装来源才给地址：npm 用 exact 版本，GitHub 源用 `github:owner/repo`；
+ * 已判定 blocked、或安装方式是 manual/none **不提供**地址，避免把装不上的东西包装成可用。
+ */
+export function installSpecFor(item: Item): string | undefined {
+  if (item.status === 'blocked') return undefined;
+  const method = marketOf(item)?.installMethod;
+  if (method === 'manual' || method === 'none') return undefined;
+  if (item.source.type === 'npm') return `${item.name}@${item.version}`;
+  const match = /^https:\/\/github\.com\/([^/]+\/[^/#?]+?)(?:\.git)?\/?$/.exec(item.source.url);
+  if (match) return `github:${match[1]}`;
+  const git = item.source.url.endsWith('.git') ? item.source.url : `${item.source.url}.git`;
+  return `git+${git}#${item.source.commit}`;
+}
+
+/** 为什么没有可复制的安装地址。 */
+export function specMissingReason(item: Item): string {
+  const method = marketOf(item)?.installMethod;
+  if (item.status === 'blocked') return '这个插件没有通过本产品的安装评估，因此不提供安装地址。';
+  if (method === 'manual') return '这个插件需要你自己下载安装（见下方项目主页），没有可复制的安装地址。';
+  if (method === 'none') return '这个插件不提供自动安装方式。';
+  return '暂无可用的安装地址。';
+}
+
 export function MarketInstallAction({ item, onClick }: { item: Item; onClick: () => void }): JSX.Element | null {
   if (item.status !== 'verified') return null;
   return <button className="primary" onClick={onClick}>查看安装方案 →</button>;
@@ -247,6 +303,7 @@ export function MarketCenter({
   install,
   mine,
   initialTab = 'find',
+  copyText,
 }: {
   data?: MarketData;
   loading: boolean;
@@ -263,6 +320,8 @@ export function MarketCenter({
   /** 「我的插件」的真实快照与动作；缺省时该入口显示为读取中。 */
   mine?: MineProps;
   initialTab?: Tab;
+  /** 复制到剪贴板（主进程实现）；缺省时退回浏览器 clipboard。 */
+  copyText?: (value: string) => Promise<unknown>;
 }): JSX.Element {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState('');
@@ -354,6 +413,18 @@ export function MarketCenter({
     }
   };
 
+  const copy = async (value: string, okMessage: string) => {
+    try {
+      if (copyText !== undefined) await copyText(value);
+      else await navigator.clipboard.writeText(value);
+      setResult({ ok: true, message: okMessage });
+    } catch {
+      setResult({ ok: false, message: '复制失败，请手动选中文字复制。' });
+    }
+  };
+
+  const spec = selected === undefined ? undefined : installSpecFor(selected);
+
   const guide = guideItem ? guideFor(guideItem) : undefined;
 
   const installedPackages = new Set((mine?.snapshot?.plugins ?? []).map((plugin) => plugin.name));
@@ -417,14 +488,25 @@ export function MarketCenter({
 
       {tab === 'find' && (
       <div id="market-find-panel" role="tabpanel" aria-label="找插件">
-      {(stage === 'detail' || stage === 'confirm') && <ol className="market-steps" aria-label="插件安装步骤">
-        {([['list', '找插件'], ['detail', '看详情'], ['confirm', '确认安装']] as const).map(([key, label], index) => (
-          <li key={key} className={stage === key ? 'current' : ''} aria-current={stage === key ? 'step' : undefined}>
-            <b>{index + 1}</b>
-            {label}
+      {(stage === 'detail' || stage === 'confirm') && selected !== undefined && (
+        <ol className="market-steps" aria-label="插件安装步骤">
+          <li>
+            <button onClick={back}><b>1</b>找插件</button>
           </li>
-        ))}
-      </ol>}
+          <li className={stage === 'detail' ? 'current' : ''} aria-current={stage === 'detail' ? 'step' : undefined}>
+            <button onClick={() => { setResult(undefined); setStage('detail'); }}><b>2</b>看详情</button>
+          </li>
+          <li className={stage === 'confirm' ? 'current' : ''} aria-current={stage === 'confirm' ? 'step' : undefined}>
+            <button
+              disabled={selected.status !== 'verified'}
+              onClick={() => { setResult(undefined); setStage('confirm'); }}
+              title={selected.status === 'verified' ? '确认安装' : '这个插件没有通过安装评估'}
+            >
+              <b>3</b>确认安装
+            </button>
+          </li>
+        </ol>
+      )}
 
       {loading && <div className="market-panel" role="status">正在读取插件资源…</div>}
 
@@ -543,9 +625,6 @@ export function MarketCenter({
 
       {!loading && !error && selected && stage !== 'list' && stage !== 'guide' && (
         <section className="market-panel">
-          <button className="market-back" onClick={stage === 'confirm' ? () => setStage('detail') : back}>
-            ← {stage === 'confirm' ? '返回详情' : '返回列表'}
-          </button>
           <div className="market-detail-heading">
             <div>
               <span className="eyebrow">插件详情</span>
@@ -559,111 +638,115 @@ export function MarketCenter({
 
           {stage === 'detail' && (
             <>
-              {isCandidate(selected) && (
-                <details className="market-more-info">
-                  <summary>安装与兼容说明</summary>
-                  <p>{selected.review.reason}</p>
-                  {selected.review.blockers.map((blocker) => (
-                    <p key={blocker.code}>
-                      <b>{reasons[blocker.code]}：</b>
-                      {blocker.detail}
-                    </p>
-                  ))}
-                </details>
-              )}
-              <div className="market-detail-grid">
-                <div><span>项目形态</span><strong>{marketOf(selected) ? kindLabels[marketOf(selected)!.kind] : '未记录'}</strong></div>
-                <div><span>适用路线</span><strong>{marketOf(selected) ? routeLabels[marketOf(selected)!.route] : '待确认'}</strong></div>
-                <div><span>作者</span><strong>{selected.author ?? '未提供'}</strong></div>
-                <div><span>来源</span><strong>{sourceLabel(selected)}</strong></div>
-                <div><span>版本</span><strong>{selected.version}</strong></div>
-                <div>
-                  <span>公开关注度</span>
-                  <strong>{marketOf(selected)?.attention ? `GitHub ★ ${marketOf(selected)!.attention!.stars}（${marketOf(selected)!.attention!.queriedAt} 查询）` : '未记录'}</strong>
-                </div>
-                <div><span>许可</span><strong>{selected.license.spdx}</strong></div>
-                <div><span>兼容性</span><strong>{compatibilityText(selected)}</strong></div>
-                <div><span>体积</span><strong>{sizeText(selected)}</strong></div>
-                <div><span>安装方式</span><strong>{marketOf(selected) ? installMethodLabels[marketOf(selected)!.installMethod] : '未记录'}</strong></div>
-              </div>
+              <InstallAddress
+                {...(spec === undefined ? {} : { spec })}
+                reason={specMissingReason(selected)}
+                onCopy={(value) => void copy(value, '安装地址已复制，可以粘贴给 Harness。')}
+              />
 
-              <h4>用途与风险</h4>
-              <p>{selected.zh.description}</p>
-              <p className="market-risk">{selected.zh.risk}</p>
-
-              <h4>外部组件与前置条件</h4>
-              {marketOf(selected)?.requires.length ? (
-                <ul>{marketOf(selected)!.requires.map((line) => <li key={line}>{line}</li>)}</ul>
-              ) : (
-                <p>未记录必须另行安装的外部组件。</p>
+              {spec !== undefined && (
+                <p className="market-install-hint">
+                  在 Harness 左侧栏「插件」→ 右上角「添加插件」里粘贴；也可以让 Harness 里的助手按这个地址安装。
+                  {selected.status !== 'verified' && ' 本产品尚未验证这个插件，兼容性与许可请自行确认。'}
+                </p>
               )}
 
-              <h4>可能冲突</h4>
-              {marketOf(selected)?.conflicts.length ? (
-                <ul>{marketOf(selected)!.conflicts.map((line) => <li key={line}>{line}</li>)}</ul>
-              ) : (
-                <p>未记录已知冲突；启用前仍应确认没有另一个插件同时处理同一个 QQ 会话。</p>
-              )}
-
-              {'safety' in selected && (
-                <>
-                  <h4>联网与权限</h4>
-                  <ul>
-                    {[...selected.safety.network, ...selected.safety.permissions].map((line) => <li key={line}>{line}</li>)}
-                  </ul>
-                  {selected.safety.requiresRestart && <p>安装后需要重启助手程序。</p>}
-                </>
-              )}
-
-              <h4>许可与分发</h4>
-              <p>{licenseNote(selected)}</p>
-              {'acceptance' in selected && (
-                <details className="advanced-settings">
-                  <summary>查看验收方式与许可详情</summary>
-                  <ul>{selected.acceptance.map((item) => <li key={item.id}>{item.step}：{item.evidence}</li>)}</ul>
-                  <p>兼容组合：{selected.compat}</p>
-                  <p>校验值：<code>{selected.integrity}</code></p>
-                  <p>依赖闭包：{selected.depsClosure.length} 项</p>
-                </details>
-              )}
-              <h4>来源与使用引导</h4>
-              <div className="market-links">
-                {selected.homepage && <a href={selected.homepage} target="_blank" rel="noopener noreferrer">项目主页 ↗</a>}
-                {'repository' in selected && selected.repository && (
-                  <a href={selected.repository.url} target="_blank" rel="noopener noreferrer">源码仓库 ↗</a>
-                )}
-                {selected.source.type === 'npm' && (
-                  <a href={`https://www.npmjs.com/package/${selected.name}`} target="_blank" rel="noopener noreferrer">npm 页面 ↗</a>
-                )}
-              </div>
-              {guideFor(selected) ? (
-                <button onClick={() => openGuide(selected)}>查看使用引导 →</button>
-              ) : (
-                <p>暂无已验证的使用引导。请打开上面的官方来源查看说明；本产品不编造跳转地址或操作步骤。</p>
-              )}
-
-              {isCandidate(selected) && selected.installNotes.length > 0 && (
-                <>
-                  <h4>安装说明</h4>
-                  <ul>{selected.installNotes.map((line) => <li key={line}>{line}</li>)}</ul>
-                </>
-              )}
-
-              {'acceptance' in selected && (
-                <details className="advanced-settings">
-                  <summary>高级操作</summary>
-                  <p>命令使用终端当前的运行环境，可能与本软件管理的环境不同。建议使用下方的安装方案。</p>
-                  <div className="row market-extra-actions">
-                    <button onClick={() => void navigator.clipboard.writeText(`dsh plugin --profile web add ${selected.name}@${selected.version}`).then(() => setResult({ ok: true, message: '安装命令已复制。' })).catch(() => setResult({ ok: false, message: '复制失败，请重试。' }))}>复制安装命令</button>
-                    <button onClick={() => void openHarness().then((response) => { if (!response.ok) setResult({ ok: false, message: response.reason ?? '助手尚未启动，请先到运行状态页面启动。' }); }).catch(() => setResult({ ok: false, message: '无法打开助手，请先启动。' }))}>打开助手</button>
-                  </div>
-                </details>
+              {isCandidate(selected) && selected.status === 'blocked' && (
+                <p className="market-hint">未通过评估：{selected.review.reason}</p>
               )}
 
               {result && <div className={`banner ${result.ok ? 'ok' : 'bad'}`} role="status">{result.message}</div>}
+
               <div className="route-actions">
                 <MarketInstallAction item={selected} onClick={() => { setResult(undefined); setStage('confirm'); }} />
+                {guideFor(selected) !== undefined && (
+                  <button onClick={() => openGuide(selected)}>使用引导</button>
+                )}
+                {spec !== undefined && (
+                  <button onClick={() => void copy(`dsh plugin --profile web add ${spec}`, '导入命令已复制。')}>复制导入命令</button>
+                )}
               </div>
+
+              <details className="advanced-settings market-more-info">
+                <summary>更多说明（来源 / 许可 / 前置条件 / 风险）</summary>
+
+                {isCandidate(selected) && (
+                  <>
+                    <p>{selected.review.reason}</p>
+                    {selected.review.blockers.map((blocker) => (
+                      <p key={blocker.code}>
+                        <b>{reasons[blocker.code]}：</b>
+                        {blocker.detail}
+                      </p>
+                    ))}
+                  </>
+                )}
+
+                <div className="market-detail-grid">
+                  <div><span>项目形态</span><strong>{marketOf(selected) ? kindLabels[marketOf(selected)!.kind] : '未记录'}</strong></div>
+                  <div><span>适用路线</span><strong>{marketOf(selected) ? routeLabels[marketOf(selected)!.route] : '待确认'}</strong></div>
+                  <div><span>作者</span><strong>{selected.author ?? '未提供'}</strong></div>
+                  <div><span>来源</span><strong>{sourceLabel(selected)}</strong></div>
+                  <div><span>版本</span><strong>{selected.version}</strong></div>
+                  <div><span>许可</span><strong>{selected.license.spdx}</strong></div>
+                  <div><span>兼容性</span><strong>{compatibilityText(selected)}</strong></div>
+                  <div><span>体积</span><strong>{sizeText(selected)}</strong></div>
+                </div>
+
+                <p>{selected.zh.description}</p>
+                <p className="market-risk">{selected.zh.risk}</p>
+
+                {marketOf(selected)?.requires.length ? (
+                  <>
+                    <h4>使用前需要准备</h4>
+                    <ul>{marketOf(selected)!.requires.map((line) => <li key={line}>{line}</li>)}</ul>
+                  </>
+                ) : null}
+
+                {marketOf(selected)?.conflicts.length ? (
+                  <>
+                    <h4>可能冲突</h4>
+                    <ul>{marketOf(selected)!.conflicts.map((line) => <li key={line}>{line}</li>)}</ul>
+                  </>
+                ) : null}
+
+                {'safety' in selected && (
+                  <>
+                    <h4>联网与权限</h4>
+                    <ul>{[...selected.safety.network, ...selected.safety.permissions].map((line) => <li key={line}>{line}</li>)}</ul>
+                  </>
+                )}
+
+                <h4>许可与分发</h4>
+                <p>{licenseNote(selected)}</p>
+
+                {'acceptance' in selected && (
+                  <>
+                    <h4>验收方式</h4>
+                    <ul>{selected.acceptance.map((item) => <li key={item.id}>{item.step}：{item.evidence}</li>)}</ul>
+                    <p>兼容组合：{selected.compat}；依赖闭包：{selected.depsClosure.length} 项</p>
+                    <p>校验值：<code>{selected.integrity}</code></p>
+                  </>
+                )}
+
+                {isCandidate(selected) && selected.installNotes.length > 0 && (
+                  <>
+                    <h4>安装说明</h4>
+                    <ul>{selected.installNotes.map((line) => <li key={line}>{line}</li>)}</ul>
+                  </>
+                )}
+
+                <div className="market-links">
+                  {selected.homepage && <a href={selected.homepage} target="_blank" rel="noopener noreferrer">项目主页 ↗</a>}
+                  {'repository' in selected && selected.repository && (
+                    <a href={selected.repository.url} target="_blank" rel="noopener noreferrer">源码仓库 ↗</a>
+                  )}
+                  {selected.source.type === 'npm' && (
+                    <a href={`https://www.npmjs.com/package/${selected.name}`} target="_blank" rel="noopener noreferrer">npm 页面 ↗</a>
+                  )}
+                  <button onClick={() => void openHarness()}>打开助手</button>
+                </div>
+              </details>
             </>
           )}
 
@@ -677,12 +760,12 @@ export function MarketCenter({
                 <div><span>安装来源</span><strong>npm 在线安装，不由本软件分发插件字节</strong></div>
                 <div><span>需要权限</span><strong>联网；安装后需要重启助手</strong></div>
               </div>
-              <div className="banner">
-                <strong>下载来源说明</strong>
+              <details className="advanced-settings">
+                <summary>下载来源说明（会自动尝试国内镜像）</summary>
                 <p>本软件没有自建国内资源库。安装时会先尝试国内镜像 npmmirror，失败后按项目现有策略切换官方 npmjs；实际使用哪个来源，会在下面的进度里显示。</p>
                 <p>首个来源：<code>https://registry.npmmirror.com/</code>；回退来源：<code>https://registry.npmjs.org/</code>。两者都不可达时会如实失败。</p>
                 <p>无法保证所有国内网络都能直连；如果镜像和官方源都不可达，会如实失败并给出下一步，不会跳过校验或改称成功。</p>
-              </div>
+              </details>
               <p className="market-risk">{selected.zh.risk}</p>
               <ul>{selected.installNotes.map((line) => <li key={line}>{line}</li>)}</ul>
               <h4>安装进度</h4>

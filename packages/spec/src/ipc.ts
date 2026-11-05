@@ -22,6 +22,14 @@ export const PluginUninstallSchema = z.object({
   confirmed: z.literal(true),
 }).strict();
 
+/**
+ * 复制到剪贴板的内容由主进程执行：渲染层在窗口未聚焦时会拿不到 clipboard 权限，
+ * 而「复制安装地址」是零基础用户的主要动作，不能靠运气。
+ */
+export const ClipboardWriteSchema = z.object({
+  text: z.string().min(1).max(4096),
+}).strict();
+
 export const EnvScanSchema = z.object({}).strict();
 
 /** 决策偏好来自用户在选择页的显式选择；主进程会再次校验。 */

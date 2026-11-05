@@ -727,6 +727,7 @@ summary:hover { color: var(--accent); }
 .market-item-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex-shrink: 0; }
 .market-item-actions a { text-align: center; color: var(--accent); font-size: 13px; }
 .market-detail-badges { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.market-detail-badges .badge { white-space: nowrap; }
 .market-links { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 12px; }
 .market-evidence-note { margin-top: 8px; color: var(--muted); font-size: 13px; }
 .market-confirm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; padding: 16px; background: #f6f9ff; border-radius: 10px; }
@@ -870,6 +871,20 @@ summary:hover { color: var(--accent); }
 .qq-route .login-guide li { padding: 2px 0; }
 .market-more-info { margin: 12px 0; color: var(--muted); font-size: 13px; }
 .market-more-info summary { cursor: pointer; }
+
+/* ---- 详情页：一屏 + 醒目的安装地址 ---- */
+.market-steps li { padding: 0; }
+.market-steps li button { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted); font-size: 14px; }
+.market-steps li button:hover:not(:disabled) { border-color: var(--border); background: white; color: var(--text); }
+.market-steps li button:disabled { opacity: 0.45; cursor: not-allowed; }
+.market-steps li.current button { color: var(--text); font-weight: 600; }
+.market-install-spec { display: flex; align-items: center; gap: 12px; margin: 14px 0 8px; padding: 14px 16px; border: 1px solid #bcd0f5; border-radius: 12px; background: #f2f7ff; }
+.market-install-spec-label { flex-shrink: 0; color: #1748a4; font-size: 13px; font-weight: 600; }
+.market-install-spec code { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid #cfe0ff; border-radius: 8px; background: white; color: #1748a4; font-size: 15px; overflow-wrap: anywhere; }
+.market-install-spec button { flex-shrink: 0; min-width: 88px; }
+.market-install-spec-off { background: #f7f9fd; border-color: var(--border); }
+.market-install-spec-off p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+.market-install-hint { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .market-risk { padding: 0; color: inherit; background: none; }
 .market-detail-grid { background: transparent; border: 1px solid var(--border); }
 @media (max-width: 900px) { .qq-route .visual-guide { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

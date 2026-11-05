@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 
 import {
   DiagExportSchema,
   MarketInstallSchema,
+  ClipboardWriteSchema,
   EnvInspectSchema,
   HarnessLaunchSchema,
   ApiEmptySchema,
@@ -107,6 +108,13 @@ export function registerIpc(ctx: IpcContext): void {
     });
     return result;
   });
+  // 剪贴板由主进程写：渲染层在窗口未聚焦时可能被拒绝 clipboard 权限。
+  ipcMain.handle('clipboard:write', (_event, raw: unknown) => {
+    const { text } = ClipboardWriteSchema.parse(raw);
+    clipboard.writeText(text);
+    return { ok: true };
+  });
+
   // ---- 我的插件：真实安装列表、真实设置入口、带备份的卸载 ----
   ipcMain.handle('plugins:list', async () => {
     try {
