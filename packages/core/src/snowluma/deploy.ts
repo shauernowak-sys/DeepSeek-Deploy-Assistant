@@ -214,6 +214,46 @@ export class SnowLumaDeployRunner {
     return this.snapshot;
   }
 
+  /**
+   * 只跑到指定步骤（含该步）。下载安装用 `start`：登录和联通留给用户后面再做，
+   * 避免「还没扫码」把已经完成的下载记成整次失败。
+   */
+  async runUntil(lastId: SnowLumaStepId): Promise<SnowLumaDeploySnapshot> {
+    this.snapshot.status = 'running';
+    this.snapshot.startedAt = this.deps.now().toISOString();
+    this.snapshot.finishedAt = undefined;
+    this.emit();
+
+    let failed = false;
+    for (const id of SNOWLUMA_STEP_IDS) {
+      if (this.options.signal?.aborted) {
+        this.cancelRemaining(id);
+        break;
+      }
+      if (this.isGated(id)) {
+        this.markBlocked(id);
+        continue;
+      }
+      if (failed) {
+        this.markSkipped(id, '前一步未完成，已跳过');
+        continue;
+      }
+      const outcome = await this.execute(id);
+      if (outcome.status === 'failed' || outcome.status === 'cancelled') failed = true;
+      if (id === lastId) break;
+    }
+
+    this.snapshot.finishedAt = this.deps.now().toISOString();
+    this.snapshot.status = this.deriveStatus();
+    this.snapshot.message = this.describe();
+    if (!failed && this.step(lastId).status === 'done' && lastId === 'start') {
+      this.snapshot.message = 'SnowLuma 已下载、安装并启动。请打开登录页，用初始口令完成扫码。';
+    }
+    this.emit();
+    await this.deps.log('info', `snowluma deploy stopped at ${lastId}: ${this.snapshot.status}`);
+    return this.snapshot;
+  }
+
   /** 单步重跑（UI 的"重新执行"按钮）。前置步骤的结论会保留。 */
   async runStep(id: SnowLumaStepId): Promise<SnowLumaDeploySnapshot> {
     if (this.isGated(id)) {

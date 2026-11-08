@@ -166,6 +166,9 @@ export function createDshCli(options: DshEnvOptions): DshCli {
   };
 }
 
+/** pnpm SGR colors (`FORCE_COLOR`, a TTY). They wrap glyphs; they are not part of the tree. */
+const ANSI_SGR = /\u001b\[[0-9;]*m/g;
+
 /**
  * `dsh plugin list` prints a pnpm dependency tree. We only need top-level dependencies.
  * Unparsable output yields an empty list rather than a fake "installed" state.
@@ -175,7 +178,10 @@ export function parsePluginList(stdout: string): PluginState[] {
   for (const rawLine of stdout.split(/\r?\n/)) {
     // Only depth-0 entries: pnpm prefixes top-level deps with `└── `/`├── ` at column 0,
     // nested dependencies keep leading indentation. Stripping indentation would over-report.
-    const treeMatch = /^(?:└── |├── )(.+)$/.exec(rawLine);
+    // Color codes sit around those glyphs (`\u001b[2m└── \u001b[22mname\u001b[90m@version`),
+    // so remove SGR first and leave the spaces in place.
+    const line = rawLine.replace(ANSI_SGR, '');
+    const treeMatch = /^(?:└── |├── )(.+)$/.exec(line);
     if (!treeMatch) continue;
     const dep = /^(@?[A-Za-z0-9][\w./@-]*)@([0-9][\w.+-]*)$/.exec(treeMatch[1]!.trim());
     if (!dep) continue;

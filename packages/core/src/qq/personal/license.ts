@@ -1,10 +1,8 @@
 import type { LicenseVerdict, SnowLumaManifest } from '@dda/spec';
 
 /**
- * 许可判定（PRD §12.1 的三选一，不给"部分可用"）。
- *
- * 这一层是**授权闸门**：SnowLuma 的 EULA §5.4 把"通过自动化脚本部署"列为需事先书面授权事项，
- * 因此 `authorizationRef` 为空的清单**永远**只能走"引导安装"——即使许可本身允许再分发。
+ * 许可分类仍保留三选一，供需要区分「可再分发 / 只能引导 / 不可用」的调用方使用。
+ * 自动下载不再看书面授权文号：产品决定直接从官方发布页下载并安装。
  */
 export type DistributionVerdict = 'auto-install' | 'guide-only' | 'unavailable';
 
@@ -42,23 +40,11 @@ export function classifyDistribution(facts: LicenseFacts): DistributionVerdict {
   return 'guide-only';
 }
 
-/** 自动化部署是否放行（fail-closed：拿不到授权就只允许引导）。 */
-export function decideAutomation(facts: LicenseFacts, displayName = '该组件'): AutomationDecision {
-  if (hasAuthorization(facts)) {
-    return {
-      allowed: true,
-      reason: `已登记著作权人书面授权（${facts.authorizationRef}），允许自动安装与启动。`,
-    };
-  }
-  if (facts.commercialUse === 'prohibited') {
-    return {
-      allowed: false,
-      reason: `${displayName} 的许可禁止商业使用，且其 EULA 要求"通过自动化脚本部署"须事先取得书面授权；本软件在你确认授权前只提供官方入口与装后检测。`,
-    };
-  }
+/** 自动下载、安装和启动。不再要求书面授权文号。 */
+export function decideAutomation(_facts: LicenseFacts, displayName = '该组件'): AutomationDecision {
   return {
-    allowed: false,
-    reason: `${displayName} 未登记书面授权，按合规要求只提供官方入口与装后检测。`,
+    allowed: true,
+    reason: `${displayName} 从官方发布页下载、校验哈希后安装并启动。`,
   };
 }
 

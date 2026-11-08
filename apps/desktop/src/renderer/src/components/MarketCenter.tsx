@@ -541,9 +541,9 @@ export function MarketCenter({
                   <span className="market-recommend-index">01</span>
                   <div>
                     <strong>SnowLuma（外部组件）</strong>
-                    <p>个人 QQ 接入所需组件，请自行安装并启动。</p>
+                    <p>个人 QQ 所需组件。在「连接 QQ」里由本软件下载、安装并启动，登录由你扫码。</p>
                   </div>
-                  <span className="badge warn">需自行准备</span>
+                  <span className="badge">本软件安装</span>
                 </article>
               )}
               {recommended.map((item, index) => {
@@ -562,7 +562,7 @@ export function MarketCenter({
             <p className="market-recommend-note">
               {routeChoice === 'official'
                 ? '插件可单独选择；具体适用范围和限制请查看详情。'
-                : 'SnowLuma 需自行准备。不同 QQ 通道可能重复回复，同一会话请只选一个通道。'}
+                : 'SnowLuma 在个人 QQ 引导里下载安装。不同 QQ 通道可能重复回复，同一会话请只选一个通道。'}
             </p>
           </section>
 

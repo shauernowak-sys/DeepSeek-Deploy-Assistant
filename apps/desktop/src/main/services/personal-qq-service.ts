@@ -1,7 +1,14 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
+  chooseLatestPeer,
+  chooseSession,
+  patchAurabotHost,
+  patchAurabotOnebotClient,
+  patchAurabotWizard,
+  pickSessionCookie,
+  shouldPointAurabotAtInstall,
   composePersonalQqStatus,
   createNodeBridgeDeps,
   createNodeDetectionDeps,
@@ -9,8 +16,11 @@ import {
   detectQqnt,
   detectSnowLuma,
   discoverInstallDirs,
+  latestMessageSec,
   loadSnowLumaManifest,
   postBridgeConfig,
+  readFriendUins,
+  readLoginUin,
   probeOneBot,
   probeTcp,
   readBridgeState,
@@ -116,7 +126,98 @@ export class PersonalQqService {
       'personal-qq',
       `settings saved (route=${parsed.route}, port=${parsed.onebotHttpPort}, installDir=${parsed.installDir ?? 'auto'})`,
     );
+    if (parsed.installDir) await this.syncAurabotSnowLumaDir().catch(() => undefined);
     return parsed;
+  }
+
+  /**
+   * 让 Aurabot 向导使用本软件已经确认的 SnowLuma 目录。
+   * 它只认自己的 `snowluma.dir`；默认的 `C:\Aurabot\snowluma` 不存在时，第二步会要求再下载一次。
+   */
+  async syncAurabotSnowLumaDir(): Promise<{ updated: boolean; dir?: string; message: string }> {
+    const home = this.container.paths.dshHome;
+    if (!home) return { updated: false, message: '没有助手数据目录' };
+    await this.applyAurabotRuntimeFixes();
+    const settings = await this.settings();
+    const candidate = (await this.discoverInstallDir(settings)) ?? '';
+    const candidateHasEntry = candidate ? await this.detection.exists(join(candidate, 'index.mjs')) : false;
+    const configPath = join(home, 'plugins-data', 'aurabot', 'config.json');
+    let raw: Record<string, unknown> | undefined;
+    try {
+      raw = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
+    } catch (error) {
+      const missing = (error as NodeJS.ErrnoException).code === 'ENOENT';
+      if (!missing) return { updated: false, message: 'Aurabot 配置无法读取' };
+    }
+    const snowluma = raw?.snowluma != null && typeof raw.snowluma === 'object' ? (raw.snowluma as Record<string, unknown>) : {};
+    const currentDir = typeof snowluma.dir === 'string' ? snowluma.dir : '';
+    const currentHasEntry = currentDir ? await this.detection.exists(join(currentDir, 'index.mjs')) : false;
+    const decision = shouldPointAurabotAtInstall({
+      currentDir,
+      currentHasEntry,
+      candidateDir: candidate,
+      candidateHasEntry,
+    });
+    if (!decision.update) return { updated: false, message: decision.reason };
+    const next = { ...(raw ?? {}), snowluma: { ...snowluma, dir: candidate } };
+    await mkdir(join(home, 'plugins-data', 'aurabot'), { recursive: true });
+    await writeFile(configPath, JSON.stringify(next, null, 2), 'utf8');
+    await this.notifyAurabotDir(candidate);
+    await this.container.logger.info('personal-qq', `aurabot snowluma dir set to ${candidate}`);
+    return { updated: true, dir: candidate, message: '已让 Aurabot 使用已经安装的 SnowLuma' };
+  }
+
+  /**
+   * 让已安装的 Aurabot 在 WebSocket 卡住时自己重试，并且登录号对上就能点「下一步」。
+   * 助手正在运行且文件有改动时重启它，否则内存里仍是旧逻辑。
+   */
+  async applyAurabotRuntimeFixes(): Promise<{ changed: boolean }> {
+    const home = this.container.paths.dshHome;
+    if (!home) return { changed: false };
+    const root = join(home, 'profiles', 'web', 'node_modules', 'dsh-aurabot-qq');
+    const files: { rel: string; patch: (source: string) => string }[] = [
+      { rel: join('src', 'onebot', 'client.js'), patch: patchAurabotOnebotClient },
+      { rel: join('client', 'client.js'), patch: patchAurabotWizard },
+      { rel: join('src', 'host.js'), patch: patchAurabotHost },
+    ];
+    let changed = false;
+    for (const file of files) {
+      const target = join(root, file.rel);
+      let source: string;
+      try {
+        source = await readFile(target, 'utf8');
+      } catch {
+        continue;
+      }
+      const next = file.patch(source);
+      if (next === source) continue;
+      await writeFile(target, next, 'utf8');
+      changed = true;
+    }
+    if (changed) {
+      await this.container.logger.info('personal-qq', 'aurabot wizard connection fix applied');
+      if (this.harness.running) await this.harness.restart(0).catch(() => undefined);
+    }
+    return { changed };
+  }
+
+  /** 助手正在运行时，把目录写进插件内存，避免向导仍拿着旧路径。失败就等下次启动再读文件。 */
+  private async notifyAurabotDir(dir: string): Promise<void> {
+    const auth = this.harness.auth();
+    const post = this.bridgeDeps.post;
+    if (!auth || !post) return;
+    const base = auth.baseUrl.replace(/\/+$/, '');
+    try {
+      const root = await this.bridgeDeps.get(`${base}/?token=${encodeURIComponent(auth.token)}`, { timeoutMs: 2500 });
+      const cookie = pickSessionCookie(root.setCookie);
+      await post(`${base}/aurabot/api/save`, {
+        headers: cookie ? { Cookie: cookie } : {},
+        body: { snowluma: { dir } },
+        timeoutMs: 4000,
+      });
+    } catch {
+      // 助手没开，或这版插件没有保存接口。磁盘上的配置会在下次启动时生效。
+    }
   }
 
   /**
@@ -203,7 +304,7 @@ export class PersonalQqService {
 
     const auth = this.harness.auth();
     if (!adapter.installed) {
-      notes.push('适配层：未安装 dsh-qq-link（第 4 步「安装 / 修复适配插件」）');
+      notes.push('适配层：未安装 dsh-qq-link（在「打开助手」里点「安装 / 修复适配插件」）');
     } else if (!auth) {
       notes.push('适配层：Harness 未运行，无法读取插件状态');
     } else {
@@ -272,7 +373,7 @@ export class PersonalQqService {
       return {
         ok: false,
         message: '没有找到 SnowLuma 安装目录，无法读取 OneBot 配置',
-        nextStep: '先按引导安装 SnowLuma 并完成登录，然后在第 1 步选择它的安装目录。',
+        nextStep: '请先在个人 QQ 的「安装 SnowLuma」里下载并安装，完成登录后再试。',
       };
     }
 
@@ -299,7 +400,7 @@ export class PersonalQqService {
   async applyBridgeEndpoint(endpoint: { baseUrl: string; accessToken?: string }): Promise<PersonalQqActionResult> {
     const auth = this.harness.auth();
     if (!auth) {
-      return { ok: false, message: 'Harness 未运行，无法写入插件配置', nextStep: '先在第 2 节启动 Harness。' };
+      return { ok: false, message: 'Harness 未运行，无法写入插件配置', nextStep: '先点「启动并打开助手」。' };
     }
 
     const result = await postBridgeConfig(this.bridgeDeps, {
@@ -320,7 +421,7 @@ export class PersonalQqService {
       return {
         ok: false,
         message: `写入适配插件配置失败：${result.error ?? '未知错误'}`,
-        nextStep: '确认 Harness 正在运行且适配插件已加载（第 4 步）。',
+        nextStep: '确认助手正在运行，并点「安装 / 修复适配插件」后再试。',
       };
     }
     return {
@@ -360,6 +461,123 @@ export class PersonalQqService {
     }
     await this.container.logger.info('personal-qq', `binding written for uin=${uin} session=${sessionId}`);
     return { ok: true, message: `已把 QQ ${uin} 的私聊绑定到会话 ${sessionId}` };
+  }
+
+  /**
+   * 不用用户查看会话编号。
+   * 选最近用过的一间助手对话，再把最近和这个小号说过话的 QQ 接上去。
+   * 已经接在这间对话上则不再改。
+   */
+  async autoBindPrivate(): Promise<PersonalQqActionResult> {
+    await this.syncAurabotSnowLumaDir().catch(() => undefined);
+    const auth = this.harness.auth();
+    if (!auth) return { ok: false, message: '助手还没启动', nextStep: '先点「启动并打开助手」。' };
+
+    const current = await readBridgeState(this.bridgeDeps, { baseUrl: auth.baseUrl, token: auth.token });
+    if (!current.ok) {
+      return {
+        ok: false,
+        message: current.errorMessage ?? '读不到助手里的连接插件',
+        nextStep: current.nextStep,
+      };
+    }
+
+    const sessionId = chooseSession(current.sessionIds ?? [], await this.sessionMtimes(current.sessionIds ?? []));
+    if (!sessionId) {
+      return {
+        ok: false,
+        message: '助手里还没有对话。',
+        nextStep: '等助手窗口打开后，再点一次「启动并打开助手」。',
+      };
+    }
+
+    const linked = (current.bindings ?? []).find((row) => row.类型 === '私聊' && row.会话 === sessionId && row.开 !== false);
+    if (linked) {
+      return { ok: true, message: '私聊已经接到当前对话。用你的 QQ 再发一条新消息即可。之前发出去的消息不会补回。' };
+    }
+
+    const moved = (current.bindings ?? []).find((row) => row.类型 === '私聊' && row.开 !== false);
+    const peer = moved?.号码 ?? (await this.latestPrivatePeer());
+    if (!peer) {
+      return {
+        ok: false,
+        message: '还不知道该接哪一个 QQ。',
+        nextStep: '用你的 QQ 给这个小号发一条消息，然后再点一次「启动并打开助手」。',
+      };
+    }
+
+    const bound = await this.bindPrivateSession({ sessionId, uin: peer });
+    if (!bound.ok) return bound;
+    return {
+      ok: true,
+      message: '已把最近和这个小号说过话的 QQ 接到当前对话。再发一条新消息就会有回复。之前的消息不会补回。',
+    };
+  }
+
+  private async sessionMtimes(ids: readonly string[]): Promise<Record<string, number>> {
+    const home = this.container.paths.dshHome;
+    if (!home || ids.length === 0) return {};
+    const dir = join(home, 'storages', 'session_projcache', 'sessions');
+    const out: Record<string, number> = {};
+    await Promise.all(
+      ids.map(async (id) => {
+        const name = id.endsWith('.json') ? id : `${id}.json`;
+        try {
+          out[id] = (await stat(join(dir, name))).mtimeMs;
+        } catch {
+          out[id] = 0;
+        }
+      }),
+    );
+    return out;
+  }
+
+  /** 在好友的私聊记录里找最近一条消息。不把消息正文和号码写进日志。 */
+  private async latestPrivatePeer(): Promise<string | undefined> {
+    const post = this.bridgeDeps.post;
+    if (!post) return undefined;
+    const settings = await this.settings();
+    const manifest = await this.manifest();
+    const installDir = await this.discoverInstallDir(settings);
+    if (!installDir) return undefined;
+    const endpoint = await readOneBotEndpoint(
+      { readdir: (path) => this.detection.readdir(path), readJson: (path) => this.detection.readJson(path) },
+      { installDir, configDir: manifest.layout.configDir, defaultPort: settings.onebotHttpPort },
+    );
+    const target = endpoint.endpoint;
+    if (!target) return undefined;
+    const headers: Record<string, string> = {};
+    if (target.accessToken) headers.Authorization = `Bearer ${target.accessToken}`;
+
+    const call = (action: string, body: unknown) =>
+      post(`${target.baseUrl.replace(/\/+$/, '')}/${action}`, { headers, body, timeoutMs: 2500 });
+
+    let self = '';
+    try {
+      const login = await call('get_login_info', {});
+      self = readLoginUin(login.body) ?? '';
+    } catch {
+      return undefined;
+    }
+
+    let friends: string[] = [];
+    try {
+      const listed = await call('get_friend_list', {});
+      friends = readFriendUins(listed.body).filter((uin) => uin !== self).slice(0, 20);
+    } catch {
+      return undefined;
+    }
+
+    const peers: { uin: string; latestSec: number }[] = [];
+    for (const uin of friends) {
+      try {
+        const history = await call('get_friend_msg_history', { user_id: Number(uin), count: 10 });
+        peers.push({ uin, latestSec: latestMessageSec(history.body) });
+      } catch {
+        // 某一个好友的历史读不到，不影响其他人。
+      }
+    }
+    return chooseLatestPeer(peers);
   }
 
   /** 人工确认"已真实收到回复"（只由用户点击；不根据探测结果自动置位）。 */

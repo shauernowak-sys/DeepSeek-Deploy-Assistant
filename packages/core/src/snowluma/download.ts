@@ -35,7 +35,7 @@ export function createNodePackageDeps(): PackageFsDeps {
     stat: (path) => stat(path),
     sha256File,
     remove: (path) => rm(path, { force: true }),
-    download: (req) => downloadVerified({ ...req, attemptsPerSource: 3 }),
+    download: (req) => downloadVerified({ ...req, attemptsPerSource: 2, timeoutMs: 90_000 }),
     now: () => Date.now(),
   };
 }
@@ -77,6 +77,15 @@ export function estimateSpeed(samples: Sample[], windowMs = 2500): number | unde
   const delta = last.bytes - first.bytes;
   if (delta <= 0) return 0;
   return Math.round((delta / elapsed) * 1000);
+}
+
+/**
+ * 官方地址在前。后面的前缀只是把同一个 GitHub 发布文件搬过来，
+ * 下载完仍必须对上清单里的 SHA-256，对不上就丢弃。
+ */
+export function snowlumaDownloadSources(officialUrl: string): string[] {
+  const prefixes = ['https://gh-proxy.com/', 'https://ghproxy.net/', 'https://mirror.ghproxy.com/'];
+  return [officialUrl, ...prefixes.map((prefix) => `${prefix}${officialUrl}`)];
 }
 
 export function formatBytes(bytes: number): string {
@@ -130,7 +139,7 @@ export async function ensurePackage(
   let reportedPercent = 0;
   const result = await deps.download({
     destPath,
-    sources: [release.url],
+    sources: snowlumaDownloadSources(release.url),
     sha256: release.sha256,
     expectedSize: release.sizeBytes,
     signal: options.signal,

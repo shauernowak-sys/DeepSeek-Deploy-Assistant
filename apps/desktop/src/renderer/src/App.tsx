@@ -1154,7 +1154,7 @@ export function App(): JSX.Element {
         {task && ['paused','failed'].includes(task.status) && qqMode && <div className="resume-strip"><span>你有一个未完成的部署任务</span><button onClick={() => setPage('deploy')}>继续部署 →</button></div>}
         <div className="mode-grid">
           <button className="mode-card" onClick={() => selectQqMode('official')}><span className="mode-index">01</span><strong>官方 QQ 机器人</strong><span>适合在群聊中使用，通过 QQ 官方平台创建和授权机器人。</span><span className="mode-action">选择官方机器人 →</span></button>
-          <button className="mode-card" onClick={() => selectQqMode('personal')}><span className="mode-index">02</span><strong>个人 QQ</strong><span>使用自己的 QQ，需自行下载、安装并登录 SnowLuma。</span><span className="mode-action">选择个人 QQ →</span></button>
+          <button className="mode-card" onClick={() => selectQqMode('personal')}><span className="mode-index">02</span><strong>个人 QQ</strong><span>使用自己的 QQ。软件会下载并安装 SnowLuma，登录由你扫码完成。</span><span className="mode-action">选择个人 QQ →</span></button>
         </div>
         <p className="mode-note">选择后将开始只读环境检查，你可以在部署前返回更改。</p>
       </main>}
@@ -1940,7 +1940,7 @@ export function App(): JSX.Element {
               <>
                 <p>请确认以下内容。点「确认并开始部署」之前，不会下载或修改任何文件。</p>
                 <div className="modal-body">
-                  <p><b>QQ 接入方式：</b>{qqMode === 'personal' ? '个人 QQ：用户自行安装 SnowLuma，不安装官方 QQ 插件' : '官方 QQ：安装官方机器人插件'}</p>
+                  <p><b>QQ 接入方式：</b>{qqMode === 'personal' ? '个人 QQ：由本软件下载并安装 SnowLuma，不安装官方 QQ 插件' : '官方 QQ：安装官方机器人插件'}</p>
                   <p>
                     <b>本次会安装：</b>
                     {deployPlan.install.length ? deployPlan.install.join('、') : '无'}

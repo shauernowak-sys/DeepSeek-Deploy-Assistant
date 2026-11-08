@@ -72,6 +72,41 @@ describe('downloadVerified', () => {
     expect(await readFile(dest)).toEqual(payload);
   });
 
+  it('数据还在持续到达时，不因为总时长超过超时而中断', async () => {
+    const server = createServer((_req, res) => {
+      res.statusCode = 200;
+      res.setHeader('content-length', String(payload.length));
+      let offset = 0;
+      const step = 8 * 1024;
+      const tick = () => {
+        if (offset >= payload.length) {
+          res.end();
+          return;
+        }
+        res.write(payload.subarray(offset, Math.min(payload.length, offset + step)));
+        offset += step;
+        setTimeout(tick, 30);
+      };
+      tick();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as AddressInfo).port;
+    const dir = await mkdtemp(join(tmpdir(), 'dda-dl-'));
+    try {
+      const result = await downloadVerified({
+        destPath: join(dir, 'slow.zip'),
+        sources: [`http://127.0.0.1:${port}/slow.zip`],
+        sha256: payloadSha,
+        expectedSize: payload.length,
+        attemptsPerSource: 1,
+        timeoutMs: 80,
+      });
+      expect(result.bytes).toBe(payload.length);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('从 .part 续传（HTTP 206）', async () => {
     const url = await serve({});
     const dir = await mkdtemp(join(tmpdir(), 'dda-dl-'));

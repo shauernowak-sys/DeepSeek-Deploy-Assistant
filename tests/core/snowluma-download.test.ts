@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ensurePackage, estimateSpeed, formatBytes, type PackageFsDeps } from '@dda/core';
+import { ensurePackage, estimateSpeed, formatBytes, snowlumaDownloadSources, type PackageFsDeps } from '@dda/core';
 import type { ResolvedRelease } from '@dda/core';
 
 const dirs: string[] = [];
@@ -34,6 +34,14 @@ function release(fileName: string, content: string): ResolvedRelease {
 }
 
 describe('SnowLuma 安装包下载', () => {
+  it('官方地址失败时还有加速地址，文件仍按同一份校验', () => {
+    const official = 'https://github.com/SnowLuma/SnowLuma/releases/download/v2.4.0/SnowLuma-v2.4.0-win-x64.zip';
+    const sources = snowlumaDownloadSources(official);
+    expect(sources[0]).toBe(official);
+    expect(sources.length).toBeGreaterThan(1);
+    expect(sources.slice(1).every((url) => url.endsWith(official))).toBe(true);
+  });
+
   it('已存在且哈希一致时不重复下载', async () => {
     const dir = await tempDir();
     const content = 'payload-1';

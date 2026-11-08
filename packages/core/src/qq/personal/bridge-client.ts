@@ -190,7 +190,7 @@ export async function readBridgeState(deps: BridgeHttpDeps, input: ReadBridgeInp
       backendOk: false,
       errorCode: 'harness-not-running',
       errorMessage: `无法访问 Harness 前端（${error instanceof Error ? error.message : String(error)}）`,
-      nextStep: '先启动 Harness（第 2 节「启动 Harness」），再回到这里重新检测。',
+      nextStep: '先点「启动并打开助手」，再回到这里重新检测。',
     };
   }
 
@@ -210,7 +210,7 @@ export async function readBridgeState(deps: BridgeHttpDeps, input: ReadBridgeInp
       backendOk: false,
       errorCode: 'bridge-route-missing',
       errorMessage: `状态接口不可访问（${error instanceof Error ? error.message : String(error)}）`,
-      nextStep: '确认 Harness 正在运行，且适配插件已安装（第 4 步）。',
+      nextStep: '确认助手正在运行，且已点过「安装 / 修复适配插件」。',
     };
   }
 

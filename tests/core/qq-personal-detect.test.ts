@@ -50,6 +50,19 @@ describe('QQ NT 探测', () => {
     expect(result.evidence.join('\n')).toContain('进程检测');
   });
 
+  it('QQ 装在自定义目录时，用正在运行的 QQ.exe 路径认定已安装', async () => {
+    const custom = 'D:\\Apps\\Tencent\\QQNT\\QQ.exe';
+    const result = await detectQqnt({
+      exists: async () => false,
+      listProcesses: async () => [{ pid: 42, exePath: custom }],
+      env,
+    });
+    expect(result.installed).toBe(true);
+    expect(result.path).toBe(custom);
+    expect(result.running).toBe(true);
+    expect(result.evidence.join('\n')).toContain(custom);
+  });
+
   it('未安装时明确说"未安装"，不把其它进程当 QQ', async () => {
     const result = await detectQqnt({
       exists: async () => false,
@@ -260,21 +273,21 @@ describe('个人 QQ 状态合成（八相位）', () => {
     expect(status.phase).toBe('qq-not-running');
   });
 
-  it('缺组件 → snowluma-not-installed；未授权时下一步是"打开官方下载页"', async () => {
+  it('缺组件 → snowluma-not-installed，下一步是自动安装', async () => {
     const status = composePersonalQqStatus(
       await input({ snowluma: { installed: false, running: false, pids: [], evidence: [] } }),
     );
     expect(status.phase).toBe('snowluma-not-installed');
-    expect(status.nextStep).toContain('官方下载页');
-    expect(status.automation.allowed).toBe(false);
+    expect(status.nextStep).toContain('安装');
+    expect(status.automation.allowed).toBe(true);
   });
 
-  it('组件已装未运行 → snowluma-installed；未授权时让用户自己启动 launcher.bat', async () => {
+  it('组件已装未运行 → snowluma-installed，下一步是启动', async () => {
     const status = composePersonalQqStatus(
       await input({ snowluma: { installed: true, installDir: INSTALL_DIR, running: false, pids: [], evidence: [] } }),
     );
     expect(status.phase).toBe('snowluma-installed');
-    expect(status.nextStep).toContain('launcher.bat');
+    expect(status.nextStep).toContain('启动');
   });
 
   it('进程在跑但 OneBot 没响应 → snowluma-running（不是"已连接"）', async () => {

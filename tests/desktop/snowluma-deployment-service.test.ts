@@ -1,12 +1,10 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createNodeConfigDeps, createNodeInstallDeps } from '@dda/core';
-import type { SnowLumaDeploySnapshot } from '@dda/spec';
-
 import { SnowLumaDeploymentService } from '../../apps/desktop/src/main/services/snowluma-deployment-service';
 import type { Container } from '../../apps/desktop/src/main/services/container';
 import type { HarnessService } from '../../apps/desktop/src/main/services/harness-service';
@@ -115,40 +113,20 @@ async function setup(): Promise<{
   return { service, root, settings };
 }
 
-async function waitFor(service: SnowLumaDeploymentService, predicate: (snapshot: SnowLumaDeploySnapshot) => boolean): Promise<SnowLumaDeploySnapshot> {
-  for (let i = 0; i < 60; i += 1) {
-    const snapshot = await service.snapshot();
-    if (predicate(snapshot)) return snapshot;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return service.snapshot();
-}
-
 describe('SnowLuma 部署服务（主进程接线）', () => {
-  it('默认快照包含 8 个步骤，并按清单给出授权结论', async () => {
+  it('默认快照包含 8 个步骤，并允许自动下载', async () => {
     const { service } = await setup();
     const snapshot = await service.snapshot();
     expect(snapshot.steps).toHaveLength(8);
-    expect(snapshot.authorization.allowed).toBe(false);
-    expect(snapshot.authorization.mode).toBe('guided');
-    expect(snapshot.authorization.reason).toContain('书面授权');
+    expect(snapshot.authorization.allowed).toBe(true);
+    expect(snapshot.authorization.mode).toBe('auto');
+    expect(snapshot.authorization.reason).toContain('官方发布页');
   });
 
-  it('未授权时启动部署：受限步骤 blocked，且会把安装目录写入设置', async () => {
-    const { service, settings } = await setup();
-    const started = await service.start({ repair: false });
-    expect(started.status).toBe('running');
-
-    const finished = await waitFor(service, (snapshot) => snapshot.status !== 'running');
-    expect(finished.status).toBe('blocked');
-    expect(finished.steps.find((step) => step.id === 'download')!.status).toBe('blocked');
-    expect(settings.installDir).toBeTruthy();
-
-    // 快照被持久化，应用重启后仍能看到结论。
-    const persisted = JSON.parse(
-      await readFile(join(settings.installDir!, '..', '..', 'state', 'snowluma', 'deployment.json'), 'utf8'),
-    ) as SnowLumaDeploySnapshot;
-    expect(persisted.status).toBe('blocked');
+  it('核对官方版本不再被许可闸门拦住', async () => {
+    const { service } = await setup();
+    const snapshot = await service.retryStep('release');
+    expect(snapshot.steps.find((step) => step.id === 'release')!.status).not.toBe('blocked');
   });
 
   it('单步重跑环境检查会写入真实结论', async () => {

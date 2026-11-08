@@ -848,7 +848,7 @@ summary:hover { color: var(--accent); }
 
 /* 个人 QQ：四步引导在常见笔记本窗口中紧凑展示。 */
 .qq-route .route-steps { margin: 12px 0; padding-bottom: 10px; }
-.qq-route .route-step { flex: 1 1 calc((100% - 21px) / 4); padding: 6px 8px; }
+.qq-route .route-step { flex: 1 1 calc((100% - 14px) / 3); padding: 8px 10px; }
 .qq-page:has(.qq-route) { padding: 18px 22px; }
 .qq-page:has(.qq-route) .page-section-heading { display: none; }
 .qq-route .route-status h3 { margin: 2px 0; font-size: 18px; }
@@ -866,6 +866,27 @@ summary:hover { color: var(--accent); }
 .qq-route .guide-number { width: 21px; height: 21px; font-size: 11px; }
 .qq-route .advanced-settings, .personal-install-details { margin-top: 8px; padding: 7px 10px; border: 0; background: transparent; font-size: 12px; }
 .qq-route .personal-route-actions { margin: 8px 0; }
+.pq-ready { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 14px; padding: 0; list-style: none; }
+.pq-ready li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #f7f9fd; }
+.pq-ready li > span { color: var(--muted); font-size: 12px; }
+.pq-progress { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+.pq-progress li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; }
+.pq-progress li.running { background: #f3f7ff; }
+.pq-progress li.done { background: #f4fbf7; }
+.pq-progress li.failed { background: #fff5f5; }
+.pq-progress strong { display: block; font-size: 14px; font-weight: 600; }
+.pq-progress p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.pq-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: #edf1f7; color: #687b95; font-size: 12px; font-weight: 700; }
+.pq-progress li.running .pq-mark, .pq-actions li:has(.primary) .pq-mark { background: var(--accent); color: #fff; }
+.pq-progress li.done .pq-mark { background: #e5f6ee; color: #147554; }
+.pq-progress li.failed .pq-mark { background: #fde8eb; color: #bb3443; }
+.pq-actions { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pq-actions li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start; }
+.pq-actions p { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
+.pq-facts { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 6px 10px; margin: 12px 0; }
+.qq-route .login-guide ol.pq-actions { margin: 0; padding-left: 0; }
+.qq-route .login-guide .pq-actions { align-content: center; }
+@media (max-width: 800px) { .pq-ready, .pq-facts { grid-template-columns: 1fr; } }
 .qq-route .login-guide { margin: 10px 0; }
 .qq-route .login-guide .setup-illustration { max-height: 180px; }
 .qq-route .login-guide li { padding: 2px 0; }

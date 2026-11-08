@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -115,8 +115,8 @@ describe('PersonalQqService：状态合成', () => {
 
     const status = await service.status();
     expect(status.phase).toBe('snowluma-not-installed');
-    expect(status.automation.allowed).toBe(false);
-    expect(status.automation.reason).toContain('书面授权');
+    expect(status.automation.allowed).toBe(true);
+    expect(status.automation.reason).toContain('官方发布页');
   });
 
   it('全链路就绪 → harness-linked，并带上会话 id（不泄漏令牌）', async () => {
@@ -216,6 +216,141 @@ describe('PersonalQqService：配置与动作', () => {
     expect(result.ok).toBe(true);
     const rows = (posted as { 绑定: { 号码: string }[] }).绑定;
     expect(rows.map((row) => row.号码)).toEqual(['888888', '123456']);
+  });
+
+  it('自动绑定会选当前会话，并接上最近说过话的 QQ', async () => {
+    const installDir = join(await makeRoot(), 'snowluma');
+    const root = await makeRoot({ route: 'personal', componentId: 'snowluma', installDir, onebotHttpPort: 3000 });
+    const state = {
+      ...LIVE_STATE,
+      活着的会话: [{ id: 'ses_old' }, { id: 'ses_new' }],
+    };
+    let posted: unknown;
+    const bridge: BridgeHttpDeps = {
+      async get(url) {
+        if (url.includes('/?token=')) return { status: 200, body: '', setCookie: ['dsh-auth-x=abc'] };
+        return { status: 200, body: state };
+      },
+      async post(url, init) {
+        if (url.endsWith('/get_login_info')) return { status: 200, body: { data: { user_id: 10001 } } };
+        if (url.endsWith('/get_friend_list')) {
+          return { status: 200, body: { data: [{ user_id: 20002 }, { user_id: 30003 }] } };
+        }
+        if (url.endsWith('/get_friend_msg_history')) {
+          const uin = (init?.body as { user_id?: number } | undefined)?.user_id;
+          const time = uin === 30003 ? 50 : 10;
+          return { status: 200, body: { data: [{ time }] } };
+        }
+        posted = init?.body;
+        return { status: 200, body: { ok: true } };
+      },
+    };
+    const service = new PersonalQqService(
+      { ...container(root), paths: { root, dshHome: join(root, 'dsh-home') } } as Container,
+      harnessStub(),
+      { detection: detectionDeps(installDir), bridge, manifestsDir: MANIFESTS, env: {} },
+    );
+
+    const result = await service.autoBindPrivate();
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain('再发一条新消息');
+    const rows = (posted as { 绑定: { 号码: string; 会话: string }[] }).绑定;
+    expect(rows).toEqual([expect.objectContaining({ 类型: '私聊', 号码: '30003', 会话: 'ses_old' })]);
+  });
+
+  it('私聊已经接在当前对话上时，不再改绑定', async () => {
+    const installDir = join(await makeRoot(), 'snowluma');
+    const root = await makeRoot({ route: 'personal', componentId: 'snowluma', installDir, onebotHttpPort: 3000 });
+    const state = {
+      ...LIVE_STATE,
+      配置: {
+        ...LIVE_STATE.配置,
+        绑定: [{ 类型: '私聊', 号码: '20002', 会话: 'ses_abc', 开: true }],
+      },
+    };
+    let posted = false;
+    const bridge: BridgeHttpDeps = {
+      async get(url) {
+        if (url.includes('/?token=')) return { status: 200, body: '', setCookie: ['dsh-auth-x=abc'] };
+        return { status: 200, body: state };
+      },
+      async post() {
+        posted = true;
+        return { status: 200, body: { ok: true } };
+      },
+    };
+    const service = new PersonalQqService(container(root), harnessStub(), {
+      detection: detectionDeps(installDir),
+      bridge,
+      manifestsDir: MANIFESTS,
+      env: {},
+    });
+
+    const result = await service.autoBindPrivate();
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain('已经接到');
+    expect(posted).toBe(false);
+  });
+
+  it('Aurabot 还指向空的默认目录时，改成已经安装的 SnowLuma', async () => {
+    const installDir = join(await makeRoot(), 'snowluma');
+    const root = await makeRoot({ route: 'personal', componentId: 'snowluma', installDir, onebotHttpPort: 3000 });
+    const dshHome = join(root, 'dsh-home');
+    const configPath = join(dshHome, 'plugins-data', 'aurabot', 'config.json');
+    await mkdir(join(dshHome, 'plugins-data', 'aurabot'), { recursive: true });
+    await writeFile(configPath, JSON.stringify({ snowluma: { dir: 'C:\\Aurabot\\snowluma', autoStart: true }, botQQ: '10001' }), 'utf8');
+    let savedDir = '';
+    const bridge: BridgeHttpDeps = {
+      async get(url) {
+        if (url.includes('/?token=')) return { status: 200, body: '', setCookie: ['dsh-auth-x=abc'] };
+        return { status: 200, body: LIVE_STATE };
+      },
+      async post(url, init) {
+        if (String(url).includes('/aurabot/api/save')) {
+          savedDir = String((init?.body as { snowluma?: { dir?: string } } | undefined)?.snowluma?.dir ?? '');
+        }
+        return { status: 200, body: { ok: true } };
+      },
+    };
+    const service = new PersonalQqService(
+      { ...container(root), paths: { root, dshHome } } as Container,
+      harnessStub(),
+      { detection: detectionDeps(installDir), bridge, manifestsDir: MANIFESTS, env: {} },
+    );
+
+    const result = await service.syncAurabotSnowLumaDir();
+    expect(result.updated).toBe(true);
+    expect(result.dir).toBe(installDir);
+    const written = JSON.parse(await readFile(configPath, 'utf8')) as { snowluma: { dir: string }; botQQ: string };
+    expect(written.snowluma.dir).toBe(installDir);
+    expect(written.botQQ).toBe('10001');
+    expect(savedDir).toBe(installDir);
+  });
+
+  it('一键安装时 Aurabot 还没有配置，也会把目录先写上', async () => {
+    const installDir = join(await makeRoot(), 'snowluma');
+    const root = await makeRoot({ route: 'personal', componentId: 'snowluma', installDir, onebotHttpPort: 3000 });
+    const dshHome = join(root, 'dsh-home');
+    const bridge: BridgeHttpDeps = {
+      async get() {
+        return { status: 200, body: '', setCookie: [] };
+      },
+      async post() {
+        return { status: 200, body: { ok: true } };
+      },
+    };
+    const service = new PersonalQqService(
+      { ...container(root), paths: { root, dshHome } } as Container,
+      harnessStub(),
+      { detection: detectionDeps(installDir), bridge, manifestsDir: MANIFESTS, env: {} },
+    );
+
+    const result = await service.syncAurabotSnowLumaDir();
+    expect(result.updated).toBe(true);
+    const written = JSON.parse(
+      await readFile(join(dshHome, 'plugins-data', 'aurabot', 'config.json'), 'utf8'),
+    ) as { snowluma: { dir: string } };
+    expect(written.snowluma.dir).toBe(installDir);
   });
 
   it('"已验证"只写我们自己的 state 文件，不碰 SnowLuma 目录', async () => {

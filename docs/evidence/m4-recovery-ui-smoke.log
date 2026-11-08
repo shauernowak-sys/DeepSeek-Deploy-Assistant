@@ -1,9 +1,0 @@
-rebuild_hint=pnpm-install
-modal_state=with-backups
-viewport=1920x1080 overflow=none modal_w=720 modal_h=490 screenshot=m4-recovery-modal-1920x1080.png
-viewport=1366x768 overflow=none modal_w=720 modal_h=490 screenshot=m4-recovery-modal-1366x768.png
-cancel_closes_modal=ok
-retry_step_button=ok（1 个）
-retry_step_viewport=1920x1080 overflow=none
-retry_step_viewport=1366x768 overflow=none
-RESULT=PASS

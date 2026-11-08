@@ -23,6 +23,7 @@ import {
   SnowLumaEmptySchema,
   SnowLumaRestoreConfigSchema,
   SnowLumaRunStepSchema,
+  SnowLumaStartDeploySchema,
   SnowLumaUninstallSchema,
   SnowLumaUseInstallSchema,
   SnowLumaVerifyInstallSchema,
@@ -129,6 +130,7 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('plugins:open-settings', async (_event, raw: unknown) => {
     const { name } = PluginNameSchema.parse(raw);
+    if (name === 'dsh-aurabot-qq') await ctx.personal.syncAurabotSnowLumaDir().catch(() => undefined);
     const result = await ctx.plugins.openSettings(name);
     // URL 只可能来自我们自己启动的 Harness，不接受渲染层传入任意地址。
     if (result.ok && result.url !== undefined) await shell.openExternal(result.url);
@@ -238,6 +240,11 @@ export function registerIpc(ctx: IpcContext): void {
     return ctx.personal.bindPrivateSession(payload);
   });
 
+  ipcMain.handle('personal:auto-bind', async (_event, raw: unknown) => {
+    SnowLumaEmptySchema.parse(raw ?? {});
+    return ctx.personal.autoBindPrivate();
+  });
+
   ipcMain.handle('personal:open', async (_event, raw: unknown) => {
     const { target } = PersonalQqOpenSchema.parse(raw);
     // URL 只从清单里取，不接受渲染层传入的任意地址。
@@ -275,6 +282,11 @@ export function registerIpc(ctx: IpcContext): void {
   ipcMain.handle('personal:install-use', async (_event, raw: unknown) => {
     const { installDir } = SnowLumaUseInstallSchema.parse(raw);
     return ctx.deployment.useInstallDir(installDir);
+  });
+
+  ipcMain.handle('personal:deploy-start', async (_event, raw: unknown) => {
+    const input = SnowLumaStartDeploySchema.parse(raw ?? {});
+    return ctx.deployment.installAndStart(input);
   });
 
   ipcMain.handle('personal:deploy-step', async (_event, raw: unknown) => {
@@ -381,6 +393,8 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('harness:launch', async (_event, raw: unknown) => {
     const { port } = HarnessLaunchSchema.parse(raw ?? {});
+    const fix = await ctx.personal.applyAurabotRuntimeFixes().catch(() => ({ changed: false }));
+    if (fix.changed && ctx.harness.running) return ctx.harness.restart(port);
     return ctx.harness.launch(port);
   });
 

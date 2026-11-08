@@ -62,6 +62,7 @@ const api = {
   personalPushBridge: () => ipcRenderer.invoke('personal:push-bridge', {}),
   personalBindPrivate: (sessionId: string, uin: string) =>
     ipcRenderer.invoke('personal:bind-private', { sessionId, uin }),
+  personalAutoBind: () => ipcRenderer.invoke('personal:auto-bind', {}),
   personalOpen: (target: 'project' | 'releases' | 'license' | 'eula' | 'webui') =>
     ipcRenderer.invoke('personal:open', { target }),
   personalPickInstallDir: () => ipcRenderer.invoke('personal:pick-install-dir', {}),
@@ -73,6 +74,8 @@ const api = {
   installVerify: (installDir?: string) =>
     ipcRenderer.invoke('personal:install-verify', installDir ? { installDir } : {}),
   installUse: (installDir: string) => ipcRenderer.invoke('personal:install-use', { installDir }),
+  deployStart: (input?: { installDir?: string; repair?: boolean }) =>
+    ipcRenderer.invoke('personal:deploy-start', input ?? {}),
   deployStep: (stepId: string) => ipcRenderer.invoke('personal:deploy-step', { stepId }),
   deployCancel: () => ipcRenderer.invoke('personal:deploy-cancel', {}),
   deployStop: () => ipcRenderer.invoke('personal:deploy-stop', {}),

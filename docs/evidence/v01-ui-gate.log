@@ -1,7 +1,0 @@
-﻿env_states=已安装,未安装
-env_conclusion=结论：可以复用
-gate_confirm_page=ok
-screenshot=C:\Users\LIU\Documents\DeepSeek-Deploy-Assistant\docs\evidence\v01-env-gate-confirm.png
-cancel_without_deploy=ok
-RESULT=PASS
-

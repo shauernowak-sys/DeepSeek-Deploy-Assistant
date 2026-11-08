@@ -59,10 +59,20 @@ export async function detectQqnt(deps: QqntDeps): Promise<QqntDetection> {
       break;
     }
   }
-  if (!installedPath) evidence.push('文件检测：常见目录下没有找到 QQ.exe（未安装桌面版 QQ）');
+  if (!installedPath) evidence.push('文件检测：常见目录下没有找到 QQ.exe');
 
   const processes = await deps.listProcesses().catch(() => [] as ProcessInfo[]);
-  const pids = processes.filter(isQqProcess).map((item) => item.pid);
+  const qqProcesses = processes.filter(isQqProcess);
+  const pids = qqProcesses.map((item) => item.pid);
+  // 用户把 QQ 装到了 D 盘或自定义目录时，三个固定路径会落空，但正在运行的 QQ.exe 路径就是安装位置。
+  if (!installedPath) {
+    const fromProcess = qqProcesses.find((item) => item.exePath)?.exePath;
+    if (fromProcess) {
+      installedPath = fromProcess;
+      evidence.push(`进程检测：从正在运行的 QQ.exe 得到安装位置 ${fromProcess}`);
+    }
+  }
+  if (!installedPath) evidence.push('文件检测：未安装桌面版 QQ');
   evidence.push(
     pids.length > 0 ? `进程检测：QQ.exe 正在运行（pid ${pids.join(', ')}）` : '进程检测：没有 QQ.exe 在运行',
   );

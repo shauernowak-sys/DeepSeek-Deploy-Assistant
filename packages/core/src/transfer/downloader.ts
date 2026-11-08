@@ -76,7 +76,13 @@ export async function downloadVerified(req: DownloadRequest): Promise<DownloadRe
       const controller = new AbortController();
       const onOuterAbort = () => controller.abort();
       req.signal?.addEventListener('abort', onOuterAbort, { once: true });
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      // 超时按“多久没有新数据”计算。41MB 的安装包在慢网上会超过 30 秒，不能把整段下载掐掉。
+      let timer: ReturnType<typeof setTimeout>;
+      const arm = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => controller.abort(), timeoutMs);
+      };
+      arm();
       try {
         if (req.signal?.aborted) {
           throw new DdaError(ERROR_CODES.E_DOWNLOAD_NETWORK, '已取消下载', '已保留已下载部分，可稍后继续');
@@ -109,6 +115,7 @@ export async function downloadVerified(req: DownloadRequest): Promise<DownloadRe
         let received = appendMode ? startByte : 0;
         try {
           for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+            arm();
             await handle.write(chunk);
             received += chunk.byteLength;
             req.onProgress?.({

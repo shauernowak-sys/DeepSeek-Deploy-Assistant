@@ -88,9 +88,9 @@ export const GUIDES: Record<string, Guide> = {
       },
       {
         title: '第 2 步：选择 QQ 网关',
-        body: '用 SnowLuma 就让插件帮你启动它；已经有自己的 OneBot v11 机器人，就选「接我已有的 OneBot 机器人」并填 WebSocket 地址。插件只连接，不会替你下载或同意任何协议。',
+        body: 'SnowLuma 在本软件里安装完成后，这里会直接显示「找到了 SnowLuma」。不用再下载。已经有自己的 OneBot v11 机器人时，改选「接我已有的 OneBot 机器人」并填 WebSocket 地址。',
         where: 'Aurabot → 设置向导 → 接 QQ 网关',
-        check: '选好网关、填好地址后「下一步」不报错。',
+        check: '目录旁显示「找到了 SnowLuma」，「下一步」可以点。',
         image: aurabotWizardGateway,
         imageAlt: '真实截图：Aurabot 设置向导第 2 步选择 QQ 网关',
       },

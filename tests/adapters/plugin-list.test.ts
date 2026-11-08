@@ -35,6 +35,27 @@ describe('parsePluginList', () => {
     const plugins = parsePluginList(nested);
     expect(plugins.map((p) => p.name)).toEqual(['@tencent-connect/dsh-qqbot']);
   });
+
+  it('FORCE_COLOR 时去掉颜色码，仍只认顶层插件', () => {
+    // 2026-11-08 实机：FORCE_COLOR=1 时 pnpm 把 SGR 插在树形符和版本号两侧。
+    const colored = [
+      'Legend: production dependency, \u001b[34moptional only\u001b[39m, \u001b[33mdev only\u001b[39m',
+      '',
+      '\u001b[1mdsh-profile-web \u001b[2mC:\\\\somewhere\\profiles\\web\u001b[22m (PRIVATE)',
+      '\u001b[2m│\u001b[22m',
+      '\u001b[2m│   \u001b[22m\u001b[96mdependencies:\u001b[39m',
+      '\u001b[2m└── \u001b[22m@tencent-connect/dsh-qqbot\u001b[90m@0.5.5\u001b[39m',
+      '    \u001b[2m└── \u001b[22mqrcode\u001b[90m@1.5.4\u001b[39m',
+      '\u001b[2m├── \u001b[22m@deepseek-ai/dsh-llm\u001b[90m@0.1.0-rc.6\u001b[39m',
+      '',
+      '\u001b[2m2 packages\u001b[22m',
+    ].join('\n');
+    const plugins = parsePluginList(colored);
+    expect(plugins.map((plugin) => `${plugin.name}@${plugin.version}`)).toEqual([
+      '@tencent-connect/dsh-qqbot@0.5.5',
+      '@deepseek-ai/dsh-llm@0.1.0-rc.6',
+    ]);
+  });
 });
 
 describe('secret mask', () => {

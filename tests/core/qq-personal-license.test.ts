@@ -41,13 +41,13 @@ describe('SnowLuma 清单（真实文件校验）', () => {
     expect(manifest.layout.launcher).toBe('launcher.bat');
   });
 
-  it('未登记授权文号时不得具备自动化能力（fail-closed）', async () => {
+  it('未登记授权文号也可以自动下载安装', async () => {
     const manifest = await loadManifest();
     expect(manifest.authorizationRef).toBeUndefined();
 
     const decision = decideManifestAutomation(manifest);
-    expect(decision.allowed).toBe(false);
-    expect(decision.reason).toContain('书面授权');
+    expect(decision.allowed).toBe(true);
+    expect(decision.reason).toContain('官方发布页');
   });
 
   it('坏清单整份拒绝：sha256 长度不对、缺 automationPolicy 都要报错', () => {
@@ -86,19 +86,19 @@ describe('许可判定（PRD §12.1 三选一）', () => {
     expect(decideAutomation(facts).allowed).toBe(true);
   });
 
-  it('无授权 + 禁止商用 → 只能引导安装，且原因里说明依据', () => {
+  it('无书面授权也可以自动安装，分类函数仍标明不可再分发', () => {
     const facts = { commercialUse: 'prohibited' as const, redistribution: 'conditional' as const };
     expect(classifyDistribution(facts)).toBe('guide-only');
     const decision = decideAutomation(facts, 'SnowLuma');
-    expect(decision.allowed).toBe(false);
+    expect(decision.allowed).toBe(true);
     expect(decision.reason).toContain('SnowLuma');
-    expect(decision.reason).toContain('EULA');
+    expect(decision.reason).toContain('官方发布页');
   });
 
-  it('无授权 + 许可未知 → 不可用（不提供任何自动途径）', () => {
+  it('许可未知时分类为不可用，自动安装仍按产品决定放行', () => {
     const facts = { commercialUse: 'unknown' as const, redistribution: 'unknown' as const };
     expect(classifyDistribution(facts)).toBe('unavailable');
-    expect(decideAutomation(facts).allowed).toBe(false);
+    expect(decideAutomation(facts).allowed).toBe(true);
   });
 
   it('无授权 + 允许商用允许再分发 → 可自动安装', () => {
@@ -109,6 +109,6 @@ describe('许可判定（PRD §12.1 三选一）', () => {
   it('授权文号过短视为未授权（防止占位字符串误开闸门）', () => {
     const facts = { commercialUse: 'prohibited' as const, redistribution: 'conditional' as const, authorizationRef: '  a  ' };
     expect(hasAuthorization(facts)).toBe(false);
-    expect(decideAutomation(facts).allowed).toBe(false);
+    expect(decideAutomation(facts).allowed).toBe(true);
   });
 });

@@ -167,7 +167,7 @@ describe('readBridgeState', () => {
       { baseUrl: 'http://127.0.0.1:18733', token: 't' },
     );
     expect(result.errorCode).toBe('harness-not-running');
-    expect(result.nextStep).toContain('启动 Harness');
+    expect(result.nextStep).toContain('启动并打开助手');
   });
 });
 

@@ -375,6 +375,29 @@ export class SnowLumaDeploymentService {
     return runner.state;
   }
 
+  /** 下载、校验、解压、写配置并启动。不继续做登录和联通。 */
+  async installAndStart(input: SnowLumaStartDeployInput): Promise<SnowLumaDeploySnapshot> {
+    if (this.runner && this.current?.status === 'running') return this.current;
+    const installDir = await this.resolveInstallDir(input.installDir);
+    const settings = await this.personal.settings();
+    if (settings.installDir !== installDir) {
+      await this.personal.saveSettings({ ...settings, installDir });
+    }
+    const runner = await this.createRunner(installDir, { repair: input.repair });
+    this.runner = runner;
+    void runner.runUntil('start').then(async (snapshot) => {
+      const started = snapshot.steps.find((step) => step.id === 'start')?.status === 'done';
+      if (!started) return;
+      await this.personal.syncAurabotSnowLumaDir();
+    }).catch(async (error) => {
+      await this.container.logger.error(
+        'snowluma',
+        `install crashed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    return runner.state;
+  }
+
   /** 单步重跑（失败后"重新执行"）。 */
   async retryStep(stepId: SnowLumaStepId): Promise<SnowLumaDeploySnapshot> {
     // 取消过之后旧的 AbortSignal 已触发，必须用新的 runner，否则下载/安装会立刻被判为取消。
